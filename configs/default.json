@@ -1,0 +1,147 @@
+{
+  "project": {
+    "seed": 42
+  },
+  "experiment": {
+    "active": "baseline",
+    "overrides": {},
+    "definitions": {
+      "baseline": {},
+      "bce_baseline": {
+        "training": {
+          "loss_mode": "bce"
+        }
+      },
+      "small_net": {
+        "training": {
+          "epochs": 8,
+          "batch_size": 10000
+        },
+        "model": {
+          "hidden_sizes": [
+            128,
+            64
+          ],
+          "embed_dim": 8,
+          "dropout": 0.2
+        }
+      }
+    }
+  },
+  "device": {
+    "move_dataset_to_cuda": true,
+    "allow_dataloader_workers": false,
+    "num_workers_env": "LOCALIZED_ENTROPY_NUM_WORKERS"
+  },
+  "training": {
+    "epochs": 12,
+    "lr": 0.001,
+    "l2_weight_decay": 0.0001,
+    "batch_size": 25000,
+    "loss_mode": "localized_entropy",
+    "eval_compare_losses": [
+      "localized_entropy",
+      "bce"
+    ]
+  },
+  "model": {
+    "hidden_sizes": [
+      256,
+      256,
+      128,
+      64
+    ],
+    "embed_dim": 16,
+    "dropout": 0.3
+  },
+  "data": {
+    "source": "ctr",
+    "train_split": 0.9,
+    "standardize": true,
+    "standardize_eps": 1e-06
+  },
+  "ctr": {
+    "train_path": "data/train.csv",
+    "test_path": "data/test.csv",
+    "read_rows": 10000000,
+    "numeric_cols": [
+      "hour",
+      "C15",
+      "C16",
+      "C17",
+      "C18",
+      "C19",
+      "C20",
+      "C21"
+    ],
+    "condition_col": "C14",
+    "label_col": "click",
+    "weight_col": null,
+    "max_conditions": 50,
+    "filter_col": "C14",
+    "filter_top_k": 3,
+    "drop_na": true,
+    "plot_filter_stats": true
+  },
+  "synthetic": {
+    "num_conditions": 10,
+    "min_samples_per_condition": 200000,
+    "max_samples_per_condition": 200000,
+    "num_numeric_features": 2,
+    "base_mu_ln": 10.0,
+    "base_sigma_ln": 1.5,
+    "sigmoid_mu_range": [
+      5.0,
+      7.0,
+      50
+    ],
+    "sigmoid_s_range": [
+      0.2,
+      0.3,
+      50
+    ],
+    "age_mu_range": [
+      30.0,
+      70.0,
+      50
+    ],
+    "age_sigma_range": [
+      10.0,
+      30.0,
+      50
+    ],
+    "interest_scale_log10_range": [
+      0.0,
+      0.001,
+      50
+    ],
+    "age_min": 10,
+    "age_max": 100,
+    "extra_feature_dist": {
+      "mean": 0.0,
+      "std": 1.0
+    }
+  },
+  "plots": {
+    "data_before_training": false,
+    "data_after_training": true,
+    "eval_hist_epochs": false,
+    "loss_curves": true,
+    "eval_pred_hist": true,
+    "eval_pred_by_condition": true,
+    "le_stats": true,
+    "print_eval_summary": true,
+    "print_le_stats_table": true
+  },
+  "logging": {
+    "print_loader_note": true
+  },
+  "evaluation": {
+    "ece_bins": 20,
+    "ece_min_count": 1,
+    "small_prob_max": 0.01,
+    "per_ad_top_k": 10,
+    "print_per_ad": true,
+    "print_calibration_table": false
+  }
+}
