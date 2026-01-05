@@ -205,6 +205,18 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
                 "labels": [str(v) for v in stats_df.index.to_list()],
                 "filter_col": cfg["ctr"].get("filter_col"),
             }
+        plot_sample_size = int(cfg["ctr"].get("plot_sample_size", 0) or 0)
+        if plot_sample_size != 0:
+            rng = np.random.default_rng(seed)
+            n_plot = min(plot_sample_size, len(labels))
+            idx = rng.choice(len(labels), size=n_plot, replace=False)
+            plot_data["ctr_distributions"] = {
+                "xnum": xnum[idx],
+                "conds": conds[idx],
+                "labels": labels[idx],
+                "feature_names": feature_names,
+                "num_conditions": num_conditions,
+            }
     elif source == "synthetic":
         dataset = make_dataset(cfg["synthetic"], seed=seed)
         feature_payload = build_features(dataset, cfg["synthetic"])

@@ -79,10 +79,11 @@
     "weight_col": null,
     "max_conditions": 50,
     "filter_col": "C14",
-    "filter_top_k": 5,
+    "filter_top_k": 3,
     "drop_na": true,
     "plot_filter_stats": true,
-    "filter_test": false
+    "filter_test": false,
+    "plot_sample_size": 200000
   },
   "synthetic": {
     "num_conditions": 10,
@@ -124,7 +125,7 @@
     }
   },
   "plots": {
-    "data_before_training": false,
+    "data_before_training": true,
     "data_after_training": true,
     "eval_hist_epochs": false,
     "loss_curves": true,
@@ -132,7 +133,12 @@
     "eval_pred_by_condition": true,
     "le_stats": true,
     "print_eval_summary": true,
-    "print_le_stats_table": true
+    "print_le_stats_table": true,
+    "ctr_data_distributions": true,
+    "ctr_label_rates": true,
+    "ctr_max_features": 3,
+    "ctr_log10_features": [],
+    "ctr_use_density": false
   },
   "logging": {
     "print_loader_note": true

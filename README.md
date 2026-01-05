@@ -50,6 +50,7 @@ The notebook stays small and delegates everything to the modules in `localized_e
   - For CTR, edit `ctr.numeric_cols`.
   - For synthetic, edit `synthetic.num_numeric_features` (extra features are Gaussian noise by default).
 - If CTR top-k filtering makes the test set empty, set `ctr.filter_test` to `false` (default) to keep test rows.
+- CTR distribution plots use a sample size from `ctr.plot_sample_size` and toggles in `plots.ctr_data_distributions` and `plots.ctr_label_rates`. Set `plots.ctr_use_density` to `true` if you want density curves instead of counts.
 
 ## Data sources
 - Real data currently uses the Avazu CTR dataset from Kaggle located in `data/`. The repo does not distribute the dataset.

@@ -55,7 +55,7 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
             train_df.groupby(filter_col)[label_col]
             .agg(
                 frequency="size",
-                median="median",
+                mean="mean",
                 std=lambda s: float(np.std(s.to_numpy(), ddof=0)),
             )
             .reindex(top_values)

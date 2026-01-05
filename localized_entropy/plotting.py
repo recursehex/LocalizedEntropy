@@ -17,6 +17,7 @@ def _density_lines(
     value_range: Optional[Tuple[float, float]] = None,
     title: str = "",
     x_label: str = "",
+    density: bool = True,
 ) -> None:
     vals = values.astype(np.float64).copy()
     if transform == "log10":
@@ -26,8 +27,11 @@ def _density_lines(
         vmin, vmax = float(np.nanmin(vals)), float(np.nanmax(vals))
     else:
         vmin, vmax = value_range
-    if not np.isfinite(vmin) or not np.isfinite(vmax) or vmin == vmax:
+    if not np.isfinite(vmin) or not np.isfinite(vmax):
         vmin, vmax = 0.0, 1.0
+    elif vmin == vmax:
+        pad = max(1.0, abs(vmin) * 0.01)
+        vmin, vmax = vmin - pad, vmax + pad
     edges = np.linspace(vmin, vmax, bins + 1)
     centers = 0.5 * (edges[:-1] + edges[1:])
     plt.figure(figsize=(10, 6))
@@ -36,11 +40,11 @@ def _density_lines(
         if not np.any(m):
             continue
         vv = vals[m]
-        hist, _ = np.histogram(vv, bins=edges, density=True)
+        hist, _ = np.histogram(vv, bins=edges, density=density)
         plt.plot(centers, hist, label=f"Condition {cond}")
     plt.title(title)
     plt.xlabel(x_label)
-    plt.ylabel("Density")
+    plt.ylabel("Density" if density else "Count")
     plt.grid(True, alpha=0.3)
     plt.legend(ncol=2, fontsize=8)
     plt.tight_layout()
@@ -127,6 +131,64 @@ def plot_eval_predictions_by_condition(
     )
 
 
+def plot_feature_distributions_by_condition(
+    xnum: np.ndarray,
+    conds: np.ndarray,
+    feature_names: list,
+    num_conditions: int,
+    *,
+    max_features: int = 3,
+    bins: int = 120,
+    log10_features: Optional[set] = None,
+    density: bool = True,
+) -> None:
+    if log10_features is None:
+        log10_features = set()
+    num_features = min(len(feature_names), xnum.shape[1], max_features)
+    for idx in range(num_features):
+        name = feature_names[idx]
+        transform = "log10" if name in log10_features else None
+        _density_lines(
+            values=xnum[:, idx],
+            groups=conds,
+            num_conditions=num_conditions,
+            bins=bins,
+            transform=transform,
+            title=f"Training Data: Distribution by Condition ({name})",
+            x_label=name,
+            density=density,
+        )
+
+
+def plot_label_rates_by_condition(
+    labels: np.ndarray,
+    conds: np.ndarray,
+    num_conditions: int,
+) -> None:
+    c = conds.astype(np.int64).reshape(-1)
+    y = labels.astype(np.float64).reshape(-1)
+    counts = np.bincount(c, minlength=num_conditions)
+    sums = np.bincount(c, weights=y, minlength=num_conditions)
+    rates = sums / np.maximum(counts, 1)
+    idx = np.arange(num_conditions)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    axes[0].bar(idx, counts, color="#4477aa")
+    axes[0].set_title("Samples per condition")
+    axes[0].set_xlabel("Condition")
+    axes[0].set_ylabel("Count")
+    axes[0].grid(True, alpha=0.3)
+
+    axes[1].bar(idx, rates, color="#66c2a5")
+    axes[1].set_title("Label base rate per condition")
+    axes[1].set_xlabel("Condition")
+    axes[1].set_ylabel("Mean label")
+    axes[1].set_ylim(0, 1)
+    axes[1].grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+
 def plot_le_stats_per_condition(stats: dict, title: str = "Localized Entropy terms per condition"):
     conds = sorted(stats.keys())
     nums = [stats[c]["Numerator"] for c in conds]
@@ -186,10 +248,11 @@ def plot_ctr_filter_stats(stats_df, labels, filter_col: str) -> None:
     axes[0].set_ylabel("Count")
     axes[0].grid(True, alpha=0.3)
 
-    axes[1].bar(labels, stats_df["median"], color="#66c2a5")
-    axes[1].set_title("Median Click")
+    mean_col = "mean" if "mean" in stats_df.columns else "median"
+    axes[1].bar(labels, stats_df[mean_col], color="#66c2a5")
+    axes[1].set_title("Mean Click Rate" if mean_col == "mean" else "Median Click")
     axes[1].set_xlabel(filter_col)
-    axes[1].set_ylabel("Median")
+    axes[1].set_ylabel("Rate")
     axes[1].grid(True, alpha=0.3)
 
     axes[2].bar(labels, stats_df["std"], color="#fc8d62")
