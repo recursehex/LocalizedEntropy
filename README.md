@@ -49,7 +49,10 @@ The notebook stays small and delegates everything to the modules in `localized_e
 - To change the number of input features:
   - For CTR, edit `ctr.numeric_cols`.
   - For synthetic, edit `synthetic.num_numeric_features` (extra features are Gaussian noise by default).
-- If CTR top-k filtering makes the test set empty, set `ctr.filter_test` to `false` (default) to keep test rows.
+- The notebook precomputes top-N ad-id filters (N = `ctr.filter_top_k`) and writes reusable CSVs:
+  - Impressions are read from `results/ad_id_impressions.txt` if present, otherwise computed from `ctr.train_path`.
+  - Outputs: `results/ad_id_impressions.csv`, `data/train_top_{N}.csv`, `data/test_top_{N}.csv`.
+  - If the filtered test set is empty, the notebook keeps the unfiltered test path to avoid empty evaluation.
 - CTR distribution plots use a sample size from `ctr.plot_sample_size` and toggles in `plots.ctr_data_distributions` and `plots.ctr_label_rates`. Set `plots.ctr_use_density` to `true` if you want density curves instead of counts.
 
 ## Data sources
