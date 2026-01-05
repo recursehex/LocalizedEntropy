@@ -42,12 +42,14 @@ The notebook stays small and delegates everything to the modules in `localized_e
 - `model`: hidden sizes, embedding dimension, dropout.
 - `training`: epochs, learning rate, batch size, loss mode, and loss comparisons.
 - `plots`: toggles for every chart and summary table.
+- `evaluation`: bins/thresholds for BCE + calibration summaries (including small-probability calibration).
 
 **Notes**
 - Normalization uses training-set mean/std for both real and synthetic data to keep scaling consistent.
 - To change the number of input features:
   - For CTR, edit `ctr.numeric_cols`.
   - For synthetic, edit `synthetic.num_numeric_features` (extra features are Gaussian noise by default).
+- If CTR top-k filtering makes the test set empty, set `ctr.filter_test` to `false` (default) to keep test rows.
 
 ## Data sources
 - Real data currently uses the Avazu CTR dataset from Kaggle located in `data/`. The repo does not distribute the dataset.

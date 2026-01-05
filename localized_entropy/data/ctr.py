@@ -37,12 +37,18 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
     stats_df = None
     top_values = None
     filter_top_k = cfg.get("filter_top_k")
+    filter_test = bool(cfg.get("filter_test", True))
     if filter_col and filter_top_k:
         top_counts = train_df[filter_col].value_counts()
         top_values = top_counts.head(int(filter_top_k)).index.to_list()
         print(f"Filtering to top {filter_top_k} values of {filter_col}: {top_values}")
         train_df = train_df[train_df[filter_col].isin(top_values)].copy()
-        test_df = test_df[test_df[filter_col].isin(top_values)].copy()
+        if filter_test:
+            test_unfiltered = test_df
+            test_df = test_df[test_df[filter_col].isin(top_values)].copy()
+            if len(test_df) == 0 and len(test_unfiltered) > 0:
+                print("[WARN] Filtered test set is empty; keeping unfiltered test rows.")
+                test_df = test_unfiltered
         print(f"Filtered Train rows: {len(train_df):,} | Filtered Test rows: {len(test_df):,}")
 
         stats_df = (
