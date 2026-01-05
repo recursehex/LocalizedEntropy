@@ -38,7 +38,7 @@
     "lr": 0.001,
     "l2_weight_decay": 0.0001,
     "batch_size": 25000,
-    "loss_mode": "localized_entropy",
+    "loss_mode": "bce",
     "eval_compare_losses": [
       "localized_entropy",
       "bce"

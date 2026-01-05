@@ -83,6 +83,7 @@ The notebook produces:
 - Prediction distributions on a log10 scale.
 - Per-condition LE numerator/denominator stats.
 - Total BCE log loss, total ECE, and per-ad BCE/ECE (including low-probability calibration).
+- Total ROC-AUC and PR-AUC for CTR baseline comparison.
 - Optional CTR filter statistics plots.
 
 These outputs support the capstone evaluation criteria in my contract (software quality, empirical improvement, and research merit).

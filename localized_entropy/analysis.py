@@ -59,6 +59,58 @@ def bce_log_loss(preds: np.ndarray, labels: np.ndarray, eps: float = 1e-12) -> f
     return float(-np.mean(y * np.log(p_clip) + (1.0 - y) * np.log(1.0 - p_clip)))
 
 
+def roc_auc_score(preds: np.ndarray, labels: np.ndarray) -> float:
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    mask = np.isfinite(p) & np.isfinite(y)
+    p = p[mask]
+    y = y[mask]
+    y = (y > 0.5).astype(np.int64)
+    n_pos = int(y.sum())
+    n_neg = int(y.size - n_pos)
+    if n_pos == 0 or n_neg == 0:
+        return float("nan")
+    order = np.argsort(p)
+    p_sorted = p[order]
+    y_sorted = y[order]
+
+    ranks = np.empty_like(p_sorted, dtype=np.float64)
+    i = 0
+    rank = 1
+    n = p_sorted.size
+    while i < n:
+        j = i
+        while j + 1 < n and p_sorted[j + 1] == p_sorted[i]:
+            j += 1
+        avg_rank = 0.5 * (rank + rank + (j - i))
+        ranks[i:j + 1] = avg_rank
+        rank += (j - i + 1)
+        i = j + 1
+
+    sum_ranks_pos = float(ranks[y_sorted == 1].sum())
+    auc = (sum_ranks_pos - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg)
+    return float(auc)
+
+
+def pr_auc_score(preds: np.ndarray, labels: np.ndarray) -> float:
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    mask = np.isfinite(p) & np.isfinite(y)
+    p = p[mask]
+    y = y[mask]
+    y = (y > 0.5).astype(np.int64)
+    n_pos = int(y.sum())
+    if n_pos == 0:
+        return float("nan")
+    order = np.argsort(p)[::-1]
+    y_sorted = y[order]
+    tp_cum = np.cumsum(y_sorted)
+    fp_cum = np.cumsum(1 - y_sorted)
+    precision = tp_cum / np.maximum(tp_cum + fp_cum, 1)
+    ap = float(precision[y_sorted == 1].sum() / n_pos)
+    return ap
+
+
 def expected_calibration_error(
     preds: np.ndarray,
     labels: np.ndarray,
