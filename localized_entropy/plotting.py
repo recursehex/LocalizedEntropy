@@ -118,7 +118,22 @@ def plot_eval_predictions_by_condition(
     preds: np.ndarray,
     conds: np.ndarray,
     num_conditions: int,
+    *,
+    title: Optional[str] = None,
+    print_counts: bool = True,
 ) -> None:
+    if title is None:
+        title = "Eval Predictions: Distribution by Condition (log10(pred probability))"
+    if preds.size == 0:
+        print("No predictions available; skipping eval prediction plot.")
+        return
+    if print_counts:
+        c = conds.astype(np.int64).reshape(-1)
+        counts = np.bincount(c, minlength=int(num_conditions))
+        print(f"Eval predictions per condition: {counts.tolist()}")
+        missing = [idx for idx, cnt in enumerate(counts) if cnt == 0]
+        if missing:
+            print(f"Conditions with zero eval samples: {missing}")
     _density_lines(
         values=preds,
         groups=conds,
@@ -126,7 +141,7 @@ def plot_eval_predictions_by_condition(
         bins=120,
         transform="log10",
         value_range=(-12, 0),
-        title="Eval Predictions: Distribution by Condition (log10(pred probability))",
+        title=title,
         x_label="log10(pred p)",
     )
 
