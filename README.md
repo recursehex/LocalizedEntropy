@@ -46,6 +46,7 @@ The notebook stays small and delegates everything to the modules in `localized_e
 
 **Notes**
 - Normalization uses training-set mean/std for both real and synthetic data to keep scaling consistent.
+- For Avazu CTR experiments, `C14` is treated as the ad identifier ("ad id") for conditioning and per-ad analysis.
 - To change the number of input features:
   - For CTR, edit `ctr.numeric_cols`.
   - For synthetic, edit `synthetic.num_numeric_features` (extra features are Gaussian noise by default).

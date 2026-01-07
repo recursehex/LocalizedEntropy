@@ -250,11 +250,12 @@ def collect_logits(
 ):
     model.eval()
     all_logits, all_targets, all_conditions = [], [], []
-    for xb, cb, yb, nw in loader:
+    for xb, x_cat, cb, yb, nw in loader:
         xb = xb.to(device, non_blocking=non_blocking)
+        x_cat = x_cat.to(device, non_blocking=non_blocking)
         cb = cb.to(device, non_blocking=non_blocking)
         yb = yb.to(device, non_blocking=non_blocking)
-        zb = model(xb, cb)
+        zb = model(xb, x_cat, cb)
         all_logits.append(zb.detach().cpu())
         all_targets.append(yb.detach().cpu())
         all_conditions.append(cb.detach().cpu())

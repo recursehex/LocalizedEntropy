@@ -34,11 +34,11 @@
     "num_workers_env": "LOCALIZED_ENTROPY_NUM_WORKERS"
   },
   "training": {
-    "epochs": 12,
+    "epochs": 4,
     "lr": 0.001,
     "l2_weight_decay": 0.0001,
     "batch_size": 25000,
-    "loss_mode": "bce",
+    "loss_mode": "localized_entropy",
     "eval_compare_losses": [
       "localized_entropy",
       "bce"
@@ -52,6 +52,7 @@
       64
     ],
     "embed_dim": 16,
+    "cat_embed_dim": 8,
     "dropout": 0.3
   },
   "data": {
@@ -61,11 +62,26 @@
     "standardize_eps": 1e-06
   },
   "ctr": {
-    "train_path": "data/train.csv",
+    "train_path": "data/train_top3.csv",
     "test_path": "data/test.csv",
     "read_rows": 10000000,
     "numeric_cols": [
+      
+    ],
+    "categorical_cols": [
+      "C1",
       "hour",
+      "banner_pos",
+      "device_type",
+      "device_conn_type",
+      "site_id",
+      "site_domain",
+      "app_id",
+      "app_domain",
+      "app_category",
+      "device_id",
+      "device_model",
+      "C14",
       "C15",
       "C16",
       "C17",
@@ -74,12 +90,16 @@
       "C20",
       "C21"
     ],
+    "categorical_max_values": 1000,
+    "derived_time": true,
+    "device_counters": true,
+    "device_counter_cap": 8,
     "condition_col": "C14",
     "label_col": "click",
     "weight_col": null,
     "max_conditions": 50,
-    "filter_col": "C14",
-    "filter_top_k": 3,
+    "filter_col": null,
+    "filter_top_k": 0,
     "drop_na": true,
     "plot_filter_stats": true,
     "filter_test": false,

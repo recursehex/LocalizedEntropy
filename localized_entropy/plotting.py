@@ -121,6 +121,7 @@ def plot_eval_predictions_by_condition(
     *,
     title: Optional[str] = None,
     print_counts: bool = True,
+    value_range: Tuple[float, float] = (-12, 0),
 ) -> None:
     if title is None:
         title = "Eval Predictions: Distribution by Condition (log10(pred probability))"
@@ -140,7 +141,7 @@ def plot_eval_predictions_by_condition(
         num_conditions=num_conditions,
         bins=120,
         transform="log10",
-        value_range=(-12, 0),
+        value_range=value_range,
         title=title,
         x_label="log10(pred p)",
     )

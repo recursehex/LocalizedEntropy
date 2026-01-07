@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import time
 import numpy as np
@@ -28,14 +28,15 @@ def evaluate(
     verified_cuda_batch = False
     loss_mode = loss_mode.lower().strip()
     bce_loss = nn.BCEWithLogitsLoss()
-    for x, c, y, nw in loader:
+    for x, x_cat, c, y, nw in loader:
         x = x.to(device, non_blocking=non_blocking)
+        x_cat = x_cat.to(device, non_blocking=non_blocking)
         c = c.to(device, non_blocking=non_blocking)
         y = y.to(device, non_blocking=non_blocking)
         nw = nw.to(device, non_blocking=non_blocking)
-        logits = model(x, c)
+        logits = model(x, x_cat, c)
         if (device.type == "cuda") and (not verified_cuda_batch):
-            tensors = (x, c, y, nw, logits)
+            tensors = (x, x_cat, c, y, nw, logits)
             if any(t.device.type != "cuda" for t in tensors):
                 raise RuntimeError("Expected CUDA tensors during evaluation but found CPU tensors.")
             verified_cuda_batch = True
@@ -74,15 +75,16 @@ def predict_probs(
     model.eval()
     preds_all = []
     verified_cuda_batch = False
-    for x, c, y, nw in loader:
+    for x, x_cat, c, y, nw in loader:
         x = x.to(device, non_blocking=non_blocking)
+        x_cat = x_cat.to(device, non_blocking=non_blocking)
         c = c.to(device, non_blocking=non_blocking)
         if (device.type == "cuda") and (not verified_cuda_batch):
-            tensors = (x, c)
+            tensors = (x, x_cat, c)
             if any(t.device.type != "cuda" for t in tensors):
                 raise RuntimeError("Expected CUDA tensors during prediction but found CPU tensors.")
             verified_cuda_batch = True
-        logits = model(x, c)
+        logits = model(x, x_cat, c)
         p = torch.sigmoid(logits).detach().cpu().numpy()
         preds_all.append(p)
     if not preds_all:
@@ -130,6 +132,7 @@ def train_with_epoch_plots(
     loss_mode: str = "localized_entropy",
     non_blocking: bool = False,
     plot_eval_hist_epochs: bool = False,
+    eval_callback: Optional[Callable[[np.ndarray, int], None]] = None,
 ) -> Tuple[List[float], List[float]]:
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_weight_decay)
     train_losses: List[float] = []
@@ -157,18 +160,19 @@ def train_with_epoch_plots(
         count = 0
         verified_cuda_batch = False
         epoch_start = time.time()
-        for x, c, y, nw in train_loader:
+        for x, x_cat, c, y, nw in train_loader:
             x = x.to(device, non_blocking=non_blocking)
+            x_cat = x_cat.to(device, non_blocking=non_blocking)
             c = c.to(device, non_blocking=non_blocking)
             y = y.to(device, non_blocking=non_blocking)
             nw = nw.to(device, non_blocking=non_blocking)
             if (device.type == "cuda") and (not verified_cuda_batch):
-                tensors = (x, c, y, nw)
+                tensors = (x, x_cat, c, y, nw)
                 if any(t.device.type != "cuda" for t in tensors):
                     raise RuntimeError("Detected CPU tensors in the training loop while using CUDA.")
                 verified_cuda_batch = True
             opt.zero_grad(set_to_none=True)
-            logits = model(x, c)
+            logits = model(x, x_cat, c)
             if use_le:
                 br_tracker.update(y, c)
                 loss = localized_entropy(
@@ -202,6 +206,10 @@ def train_with_epoch_plots(
             loss_mode=loss_mode,
             non_blocking=non_blocking,
         )
+        if plot_eval_hist_epochs and preds is not None:
+            plot_eval_log10p_hist(preds.astype(np.float32), epoch)
+        if eval_callback is not None and preds is not None:
+            eval_callback(preds, epoch)
         train_losses.append(train_loss)
         val_losses.append(val_loss)
         epoch_time = time.time() - epoch_start
@@ -215,8 +223,6 @@ def train_with_epoch_plots(
             log_msg += f" | cuda_mem={mem_alloc:.1f}MB (peak {peak_mem:.1f}MB)"
         print(log_msg)
 
-    if plot_eval_hist_epochs and preds is not None:
-        plot_eval_log10p_hist(preds.astype(np.float32), epoch)
     print(f"Final Train {loss_label}: {train_losses[-1]:.10f}")
     print(f"Final Eval  {loss_label}: {val_losses[-1]:.10f}")
     return train_losses, val_losses

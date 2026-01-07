@@ -11,11 +11,17 @@ class ConditionDataset(Dataset):
         conds,
         labels,
         net_worth=None,
+        x_cat=None,
         share_memory: bool = False,
     ):
         assert x_num.ndim == 2 and x_num.shape[1] >= 1
         assert len(x_num) == len(conds) == len(labels)
         self.x = torch.as_tensor(x_num, dtype=torch.float32).contiguous()
+        if x_cat is None:
+            x_cat = torch.empty((len(labels), 0), dtype=torch.long)
+        x_cat = torch.as_tensor(x_cat, dtype=torch.long).contiguous()
+        assert x_cat.ndim == 2 and x_cat.shape[0] == len(labels)
+        self.x_cat = x_cat
         self.c = torch.as_tensor(conds, dtype=torch.long).contiguous()
         self.y = torch.as_tensor(labels, dtype=torch.float32).contiguous()
         if net_worth is None:
@@ -24,7 +30,7 @@ class ConditionDataset(Dataset):
             assert len(net_worth) == len(labels)
             self.nw = torch.as_tensor(net_worth, dtype=torch.float32).contiguous()
         if share_memory:
-            for tensor in (self.x, self.c, self.y, self.nw):
+            for tensor in (self.x, self.x_cat, self.c, self.y, self.nw):
                 if tensor.device.type == "cpu":
                     tensor.share_memory_()
 
@@ -34,6 +40,7 @@ class ConditionDataset(Dataset):
     def __getitem__(self, idx: int):
         return (
             self.x[idx],
+            self.x_cat[idx],
             self.c[idx],
             self.y[idx],
             self.nw[idx],
