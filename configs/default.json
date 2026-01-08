@@ -34,10 +34,11 @@
     "num_workers_env": "LOCALIZED_ENTROPY_NUM_WORKERS"
   },
   "training": {
-    "epochs": 12,
+    "epochs": 6,
     "lr": 0.001,
     "batch_size": 25000,
     "loss_mode": "localized_entropy",
+    "eval_every_n_batches": 24,
     "eval_compare_losses": [
       "localized_entropy",
       "bce"
@@ -55,7 +56,7 @@
     "dropout": 0.3
   },
   "data": {
-    "source": "synthetic",
+    "source": "ctr",
     "train_split": 0.9,
     "standardize": true,
     "standardize_eps": 1e-06

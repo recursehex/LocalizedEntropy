@@ -132,6 +132,8 @@ def train_with_epoch_plots(
     non_blocking: bool = False,
     plot_eval_hist_epochs: bool = False,
     eval_callback: Optional[Callable[[np.ndarray, int], None]] = None,
+    eval_every_n_batches: Optional[int] = None,
+    eval_batch_callback: Optional[Callable[[np.ndarray, int, int], None]] = None,
 ) -> Tuple[List[float], List[float]]:
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     train_losses: List[float] = []
@@ -147,6 +149,9 @@ def train_with_epoch_plots(
         torch.cuda.reset_peak_memory_stats(device)
 
     preds = None
+    eval_every = int(eval_every_n_batches) if eval_every_n_batches is not None else 0
+    if eval_every < 1:
+        eval_every = 0
     for epoch in range(1, epochs + 1):
         model.train()
         br_tracker = None
@@ -159,7 +164,8 @@ def train_with_epoch_plots(
         count = 0
         verified_cuda_batch = False
         epoch_start = time.time()
-        for x, x_cat, c, y, nw in train_loader:
+        total_batches = len(train_loader) if hasattr(train_loader, "__len__") else None
+        for batch_idx, (x, x_cat, c, y, nw) in enumerate(train_loader, start=1):
             x = x.to(device, non_blocking=non_blocking)
             x_cat = x_cat.to(device, non_blocking=non_blocking)
             c = c.to(device, non_blocking=non_blocking)
@@ -194,6 +200,22 @@ def train_with_epoch_plots(
             opt.step()
             running += float(loss.item()) * x.size(0)
             count += x.size(0)
+            if (
+                eval_every
+                and eval_batch_callback is not None
+                and (batch_idx % eval_every == 0)
+                and (total_batches is None or batch_idx < total_batches)
+            ):
+                _, mid_preds = evaluate(
+                    model, val_loader, device,
+                    condition_weights=condition_weights,
+                    nw_threshold=nw_threshold,
+                    nw_multiplier=nw_multiplier,
+                    loss_mode=loss_mode,
+                    non_blocking=non_blocking,
+                )
+                eval_batch_callback(mid_preds, epoch, batch_idx)
+                model.train()
         if device.type == "cuda":
             torch.cuda.synchronize(device)
         train_loss = running / max(1, count)
