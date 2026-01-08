@@ -125,7 +125,6 @@ def train_with_epoch_plots(
     device: torch.device,
     epochs: int,
     lr: float,
-    l2_weight_decay: float = 0.0,
     condition_weights: Optional[np.ndarray] = None,
     nw_threshold: Optional[float] = None,
     nw_multiplier: float = 1.0,
@@ -134,7 +133,7 @@ def train_with_epoch_plots(
     plot_eval_hist_epochs: bool = False,
     eval_callback: Optional[Callable[[np.ndarray, int], None]] = None,
 ) -> Tuple[List[float], List[float]]:
-    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=l2_weight_decay)
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
     train_losses: List[float] = []
     val_losses: List[float] = []
     loss_mode = loss_mode.lower().strip()

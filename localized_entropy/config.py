@@ -41,5 +41,16 @@ def load_and_resolve(path: str) -> Dict[str, Any]:
     return resolve_experiment(load_config(path))
 
 
+def get_data_source(cfg: Dict[str, Any]) -> str:
+    return cfg.get("data", {}).get("source", "synthetic").lower().strip()
+
+
+def get_condition_label(cfg: Dict[str, Any]) -> str:
+    source = get_data_source(cfg)
+    if source == "ctr":
+        return cfg.get("ctr", {}).get("condition_col", "Condition")
+    return "Condition"
+
+
 def loss_label(loss_mode: str) -> str:
     return "LE" if loss_mode.lower().strip() == "localized_entropy" else "BCE"

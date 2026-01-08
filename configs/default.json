@@ -34,9 +34,8 @@
     "num_workers_env": "LOCALIZED_ENTROPY_NUM_WORKERS"
   },
   "training": {
-    "epochs": 4,
+    "epochs": 12,
     "lr": 0.001,
-    "l2_weight_decay": 0.0001,
     "batch_size": 25000,
     "loss_mode": "localized_entropy",
     "eval_compare_losses": [
@@ -56,7 +55,7 @@
     "dropout": 0.3
   },
   "data": {
-    "source": "ctr",
+    "source": "synthetic",
     "train_split": 0.9,
     "standardize": true,
     "standardize_eps": 1e-06
@@ -106,7 +105,7 @@
     "plot_sample_size": 200000
   },
   "synthetic": {
-    "num_conditions": 10,
+    "num_conditions": 6,
     "min_samples_per_condition": 200000,
     "max_samples_per_condition": 200000,
     "num_numeric_features": 2,
