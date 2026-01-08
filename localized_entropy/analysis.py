@@ -7,6 +7,71 @@ import torch
 from torch.utils.data import DataLoader
 
 
+def print_feature_stats(name: str, features: Optional[np.ndarray]) -> None:
+    if features is None:
+        print(f"{name}: None")
+        return
+    x = np.asarray(features)
+    if x.size == 0:
+        print(f"{name}: empty")
+        return
+    means = np.nanmean(x, axis=0)
+    stds = np.nanstd(x, axis=0)
+    near_zero = float(np.mean(stds < 1e-8))
+    print(f"{name}: shape={x.shape}")
+    print(f"  mean: min={means.min():.6g} max={means.max():.6g} avg={means.mean():.6g}")
+    print(f"  std:  min={stds.min():.6g} max={stds.max():.6g} avg={stds.mean():.6g}")
+    print(f"  std < 1e-8: {near_zero:.2%}")
+
+
+def print_condition_stats(
+    name: str,
+    conds: Optional[np.ndarray],
+    num_conditions: int,
+) -> None:
+    if conds is None:
+        print(f"{name}: None")
+        return
+    c = np.asarray(conds, dtype=np.int64).reshape(-1)
+    if c.size == 0:
+        print(f"{name}: empty")
+        return
+    counts = np.bincount(c, minlength=int(num_conditions))
+    uniq = np.unique(c)
+    print(f"{name}: n={c.size:,} unique={uniq.size} min={c.min()} max={c.max()}")
+    print(
+        f"  counts: min={counts.min()} max={counts.max()} mean={counts.mean():.2f} zeros={(counts == 0).sum()}"
+    )
+
+
+def print_label_stats(
+    name: str,
+    labels: Optional[np.ndarray],
+    conds: Optional[np.ndarray],
+    num_conditions: int,
+) -> None:
+    if labels is None:
+        print(f"{name}: None")
+        return
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    if y.size == 0:
+        print(f"{name}: empty")
+        return
+    print(f"{name}: n={y.size:,} base_rate={y.mean():.6g} min={y.min():.6g} max={y.max():.6g}")
+    if conds is None:
+        return
+    c = np.asarray(conds, dtype=np.int64).reshape(-1)
+    counts = np.bincount(c, minlength=int(num_conditions))
+    sums = np.bincount(c, weights=y, minlength=int(num_conditions))
+    rates = sums / np.maximum(counts, 1)
+    valid = counts > 0
+    if valid.any():
+        print(
+            "  per-cond base_rate: "
+            f"min={rates[valid].min():.6g} max={rates[valid].max():.6g} avg={rates[valid].mean():.6g}"
+        )
+
+
 def print_pred_summary(
     name: str,
     preds: np.ndarray,
