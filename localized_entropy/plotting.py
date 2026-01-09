@@ -88,12 +88,12 @@ def plot_training_distributions(
     )
 
 
-def plot_eval_log10p_hist(preds: np.ndarray, epoch: int, bins: int = 100) -> None:
+def plot_eval_log10p_hist(preds: np.ndarray, epoch: int, bins: int = 100, *, name: str = "Eval") -> None:
     eps = 1e-12
     log10p = np.log10(np.clip(preds, eps, 1.0))
     plt.figure(figsize=(8, 5))
     plt.hist(log10p, bins=bins, range=(-12, 0), density=True, color="#4477aa", alpha=0.85)
-    plt.title(f"Eval Predicted Probability: log10(p) (Epoch {epoch})")
+    plt.title(f"{name} Predicted Probability: log10(p) (Epoch {epoch})")
     plt.xlabel("log10(pred p)")
     plt.ylabel("Density")
     plt.grid(True, alpha=0.3)
@@ -119,22 +119,23 @@ def plot_eval_predictions_by_condition(
     conds: np.ndarray,
     num_conditions: int,
     *,
+    name: str = "Eval",
     title: Optional[str] = None,
     print_counts: bool = True,
     value_range: Tuple[float, float] = (-12, 0),
 ) -> None:
     if title is None:
-        title = "Eval Predictions: Distribution by Condition (log10(pred probability))"
+        title = f"{name} Predictions: Distribution by Condition (log10(pred probability))"
     if preds.size == 0:
         print("No predictions available; skipping eval prediction plot.")
         return
     if print_counts:
         c = conds.astype(np.int64).reshape(-1)
         counts = np.bincount(c, minlength=int(num_conditions))
-        print(f"Eval predictions per condition: {counts.tolist()}")
+        print(f"{name} predictions per condition: {counts.tolist()}")
         missing = [idx for idx, cnt in enumerate(counts) if cnt == 0]
         if missing:
-            print(f"Conditions with zero eval samples: {missing}")
+            print(f"Conditions with zero {name.lower()} samples: {missing}")
     _density_lines(
         values=preds,
         groups=conds,

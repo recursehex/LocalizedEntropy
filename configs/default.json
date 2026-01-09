@@ -59,7 +59,8 @@
     "source": "ctr",
     "train_split": 0.9,
     "standardize": true,
-    "standardize_eps": 1e-06
+    "standardize_eps": 1e-06,
+    "shuffle_test": true
   },
   "ctr": {
     "train_path": "data/train_top3.csv",

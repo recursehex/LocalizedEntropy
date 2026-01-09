@@ -301,6 +301,20 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
     else:
         xcat_test = None
 
+    shuffle_test = bool(data_cfg.get("shuffle_test", True))
+    if shuffle_test and xnum_test is not None:
+        rng = np.random.default_rng(seed)
+        test_idx = rng.permutation(len(xnum_test))
+        xnum_test = xnum_test[test_idx]
+        if xcat_test is not None:
+            xcat_test = xcat_test[test_idx]
+        if conds_test is not None:
+            conds_test = conds_test[test_idx]
+        if net_worth_test is not None:
+            net_worth_test = net_worth_test[test_idx]
+        if y_test is not None:
+            y_test = y_test[test_idx]
+
     if standardize:
         x_train_n, x_eval_n, x_test_n, normalizer = standardize_features(
             x_train, x_eval, xnum_test, eps=std_eps
