@@ -90,6 +90,7 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
     weight_col = cfg.get("weight_col")
     derived_time = bool(cfg.get("derived_time", False))
     device_counters = bool(cfg.get("device_counters", False))
+    test_has_labels = bool(cfg.get("test_has_labels", False))
 
     filter_cols = [filter_col] if filter_col else []
     extra_cols: List[str] = []
@@ -103,6 +104,7 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
     )
     test_usecols = dedupe(
         [condition_col, *numeric_cols, *categorical_cols, *filter_cols, *extra_cols]
+        + ([label_col] if test_has_labels else [])
         + ([weight_col] if weight_col else [])
     )
 
@@ -170,6 +172,7 @@ def build_ctr_arrays(train_df: pd.DataFrame, test_df: pd.DataFrame, cfg: Dict) -
     max_conditions = cfg.get("max_conditions")
     derived_time = bool(cfg.get("derived_time", False))
     device_counters = bool(cfg.get("device_counters", False))
+    test_has_labels = bool(cfg.get("test_has_labels", False))
 
     labels = train_df[label_col].to_numpy(dtype=np.float32)
     cond_map, other_id, num_conditions = build_condition_encoder(
@@ -231,6 +234,9 @@ def build_ctr_arrays(train_df: pd.DataFrame, test_df: pd.DataFrame, cfg: Dict) -
         net_worth_test = np.zeros((len(test_df),), dtype=np.float32)
 
     probs = np.clip(labels, 1e-6, 1.0 - 1e-6)
+    labels_test = None
+    if test_has_labels and (label_col in test_df.columns):
+        labels_test = test_df[label_col].to_numpy(dtype=np.float32)
 
     return {
         "xnum": xnum,
@@ -238,6 +244,7 @@ def build_ctr_arrays(train_df: pd.DataFrame, test_df: pd.DataFrame, cfg: Dict) -
         "xcat": xcat,
         "xcat_test": xcat_test,
         "labels": labels,
+        "labels_test": labels_test,
         "conds": conds,
         "conds_test": conds_test,
         "net_worth": net_worth,

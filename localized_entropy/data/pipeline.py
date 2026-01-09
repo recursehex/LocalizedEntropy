@@ -212,6 +212,7 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
     standardize = bool(data_cfg.get("standardize", True))
 
     plot_data = {}
+    labels_test = None
     if source == "ctr":
         train_df, test_df, stats_df, top_values = load_ctr_frames(cfg["ctr"])
         arrays = build_ctr_arrays(train_df, test_df, cfg["ctr"])
@@ -225,6 +226,7 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
         xcat_test = arrays["xcat_test"]
         conds_test = arrays["conds_test"]
         net_worth_test = arrays["net_worth_test"]
+        labels_test = arrays.get("labels_test")
         feature_names = arrays["feature_names"]
         num_conditions = arrays["num_conditions"]
         cat_sizes = arrays["cat_sizes"]
@@ -292,7 +294,10 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
 
     y_test = None
     if xnum_test is not None:
-        y_test = np.zeros((len(xnum_test),), dtype=np.float32)
+        if labels_test is not None:
+            y_test = labels_test
+        else:
+            y_test = np.zeros((len(xnum_test),), dtype=np.float32)
     else:
         xcat_test = None
 

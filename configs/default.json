@@ -38,7 +38,7 @@
     "lr": 0.001,
     "batch_size": 25000,
     "loss_mode": "localized_entropy",
-    "eval_every_n_batches": 24,
+    "eval_every_n_batches": 0,
     "eval_compare_losses": [
       "localized_entropy",
       "bce"
@@ -102,7 +102,8 @@
     "filter_top_k": 0,
     "drop_na": true,
     "plot_filter_stats": true,
-    "filter_test": false,
+    "filter_test": true,
+    "test_has_labels": false,
     "plot_sample_size": 200000
   },
   "synthetic": {
@@ -151,6 +152,10 @@
     "loss_curves": true,
     "eval_pred_hist": true,
     "eval_pred_by_condition": true,
+    "eval_pred_value_range": [
+      -12,
+      0
+    ],
     "le_stats": true,
     "print_eval_summary": true,
     "print_le_stats_table": true,
@@ -164,6 +169,8 @@
     "print_loader_note": true
   },
   "evaluation": {
+    "use_test_labels": false,
+    "split": "eval",
     "ece_bins": 20,
     "ece_min_count": 1,
     "small_prob_max": 0.01,
