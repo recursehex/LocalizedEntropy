@@ -279,3 +279,28 @@ def plot_ctr_filter_stats(stats_df, labels, filter_col: str) -> None:
     axes[2].grid(True, alpha=0.3)
     plt.tight_layout()
     plt.show()
+
+
+def plot_pred_to_train_rate(
+    plot_df,
+    *,
+    condition_label: str,
+    eval_name: str,
+) -> None:
+    if plot_df is None or len(plot_df) == 0:
+        print("[WARN] Plot data unavailable; skipping pred/train ratio chart.")
+        return
+    fig, ax = plt.subplots(1, 1, figsize=(12, 4))
+    ax.bar(
+        plot_df[condition_label].astype(np.int64),
+        plot_df["pred_to_train_rate"],
+        color="#4477aa",
+    )
+    ax.axhline(1.0, color="#d95f02", linestyle="--", linewidth=1)
+    ax.set_title(
+        f"{eval_name} avg prediction / train click rate by {condition_label} (top {len(plot_df)})"
+    )
+    ax.set_xlabel(condition_label)
+    ax.set_ylabel("Prediction / Train Click Rate")
+    ax.grid(True, alpha=0.3)
+    plt.show()

@@ -269,6 +269,105 @@ def per_condition_metrics(
     return pd.DataFrame(rows).sort_values("count", ascending=False)
 
 
+def summarize_per_ad_train_eval_rates(
+    train_labels: Optional[np.ndarray],
+    train_conds: Optional[np.ndarray],
+    eval_preds: Optional[np.ndarray],
+    eval_conds: Optional[np.ndarray],
+    num_conditions: int,
+    *,
+    condition_label: str,
+    eval_name: str,
+    top_k: int = 10,
+) -> Optional[pd.DataFrame]:
+    top_k = max(int(top_k), 1)
+    train_has = train_labels is not None and train_conds is not None
+    eval_has = eval_preds is not None and eval_conds is not None
+
+    if not train_has:
+        print("[WARN] Train labels/conditions unavailable; skipping per-ad train click rates.")
+    else:
+        c_train = np.asarray(train_conds, dtype=np.int64).reshape(-1)
+        y_train = np.asarray(train_labels, dtype=np.float64).reshape(-1)
+        train_counts = np.bincount(c_train, minlength=int(num_conditions))
+        train_clicks = np.bincount(c_train, weights=y_train, minlength=int(num_conditions))
+        train_rates = train_clicks / np.maximum(train_counts, 1)
+
+    if not eval_has:
+        print(f"[WARN] {eval_name} conditions unavailable; skipping per-ad prediction averages.")
+    else:
+        c_eval = np.asarray(eval_conds, dtype=np.int64).reshape(-1)
+        p_eval = np.asarray(eval_preds, dtype=np.float64).reshape(-1)
+        eval_counts = np.bincount(c_eval, minlength=int(num_conditions))
+        eval_pred_sums = np.bincount(c_eval, weights=p_eval, minlength=int(num_conditions))
+        eval_pred_avgs = eval_pred_sums / np.maximum(eval_counts, 1)
+
+    if train_has and eval_has:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = np.divide(
+                eval_pred_avgs,
+                train_rates,
+                out=np.full_like(eval_pred_avgs, np.nan, dtype=np.float64),
+                where=train_rates > 0,
+            )
+
+        per_ad_rates = pd.DataFrame(
+            {
+                condition_label: np.arange(num_conditions, dtype=np.int64),
+                "train_clicks": train_clicks.astype(np.int64),
+                "train_total": train_counts.astype(np.int64),
+                "train_click_rate": train_rates,
+                f"{eval_name.lower()}_pred_avg": eval_pred_avgs,
+                f"{eval_name.lower()}_total": eval_counts.astype(np.int64),
+                "pred_to_train_rate": ratio,
+            }
+        ).sort_values("train_total", ascending=False)
+
+        if num_conditions <= top_k:
+            print(per_ad_rates.to_string(index=False))
+            return per_ad_rates
+        print(per_ad_rates.head(top_k).to_string(index=False))
+        print(
+            f"[INFO] Showing top {top_k} by train count; {num_conditions} total {condition_label} values."
+        )
+        return per_ad_rates.head(top_k)
+
+    if train_has:
+        train_only = pd.DataFrame(
+            {
+                condition_label: np.arange(num_conditions, dtype=np.int64),
+                "train_clicks": train_clicks.astype(np.int64),
+                "train_total": train_counts.astype(np.int64),
+                "train_click_rate": train_rates,
+            }
+        ).sort_values("train_total", ascending=False)
+        if num_conditions <= top_k:
+            print(train_only.to_string(index=False))
+        else:
+            print(train_only.head(top_k).to_string(index=False))
+            print(
+                f"[INFO] Showing top {top_k} by train count; {num_conditions} total {condition_label} values."
+            )
+        return None
+
+    if eval_has:
+        eval_only = pd.DataFrame(
+            {
+                condition_label: np.arange(num_conditions, dtype=np.int64),
+                f"{eval_name.lower()}_pred_avg": eval_pred_avgs,
+                f"{eval_name.lower()}_total": eval_counts.astype(np.int64),
+            }
+        ).sort_values(f"{eval_name.lower()}_total", ascending=False)
+        if num_conditions <= top_k:
+            print(eval_only.to_string(index=False))
+        else:
+            print(eval_only.head(top_k).to_string(index=False))
+            print(
+                f"[INFO] Showing top {top_k} by eval count; {num_conditions} total {condition_label} values."
+            )
+    return None
+
+
 def collect_le_stats_per_condition(
     logits: torch.Tensor,
     targets: torch.Tensor,
