@@ -1,0 +1,192 @@
+# configs/default.json reference
+
+This document explains each setting in `configs/default.json`, how it is
+resolved, and how it affects the pipeline.
+
+## How config resolution works
+
+`localized_entropy/config.py` loads JSON, then:
+
+1) Reads `experiment.active` to pick a definition from
+   `experiment.definitions`.
+2) Deep-merges the active definition into the base config.
+3) Deep-merges `experiment.overrides` last.
+4) Sets `experiment.name` to the active key for reporting.
+
+This means you can keep defaults in the top-level config and override
+small subsets per experiment.
+
+Example:
+
+```json
+"experiment": {
+  "active": "bce_baseline",
+  "definitions": {
+    "bce_baseline": {
+      "training": {"loss_mode": "bce"}
+    }
+  }
+}
+```
+
+## Settings reference
+
+### project
+- `project.seed`: RNG seed used for numpy, torch, and dataset splitting.
+
+### experiment
+- `experiment.active`: Name of the active experiment definition.
+- `experiment.definitions`: Map of experiment overrides to merge.
+- `experiment.overrides`: Ad-hoc overrides applied after definitions.
+
+### device
+- `device.move_dataset_to_cuda`: If true and CUDA is available, stage
+  datasets on GPU and use `TensorBatchLoader`.
+- `device.allow_dataloader_workers`: If true, allow multiprocessing
+  DataLoader workers (false in notebooks by default).
+- `device.num_workers_env`: Env var name used to override worker count.
+
+### training
+- `training.epochs`: Number of training epochs.
+- `training.lr`: Adam learning rate.
+- `training.batch_size`: Train/eval batch size.
+- `training.loss_mode`: `localized_entropy` or `bce`.
+- `training.eval_every_n_batches`: If > 0, run mid-epoch eval callbacks
+  at that interval.
+- `training.eval_compare_losses`: List of loss modes to evaluate after
+  training for comparison.
+
+Example:
+
+```json
+"training": {
+  "loss_mode": "localized_entropy",
+  "eval_compare_losses": ["localized_entropy", "bce"],
+  "eval_every_n_batches": 200
+}
+```
+
+### model
+- `model.hidden_sizes`: MLP hidden layer sizes.
+- `model.embed_dim`: Condition embedding dimension.
+- `model.cat_embed_dim`: Categorical embedding dimension
+  (defaults to `embed_dim` if absent).
+- `model.dropout`: Dropout probability in the MLP.
+
+### data
+- `data.source`: `ctr` or `synthetic`.
+- `data.train_split`: Fraction of samples used for training.
+- `data.standardize`: If true, standardize numeric features using train
+  mean/std.
+- `data.standardize_eps`: Small std floor to avoid divide-by-zero.
+- `data.shuffle_test`: If true, shuffle test arrays after load.
+
+### ctr
+These settings are used when `data.source` is `ctr`.
+
+- `ctr.train_path` / `ctr.test_path`: CSV paths.
+- `ctr.read_rows`: Max rows to read (null/0 = all rows).
+- `ctr.numeric_cols`: Numeric feature columns.
+- `ctr.categorical_cols`: Categorical feature columns.
+- `ctr.categorical_max_values`: Cap per categorical vocab (top-k + other).
+- `ctr.derived_time`: Derive `wd` and `wd_hour` from `hour`.
+- `ctr.device_counters`: Add capped device_id/device_ip counts.
+- `ctr.device_counter_cap`: Cap for device counters.
+- `ctr.condition_col`: Condition column (e.g., ad id).
+- `ctr.label_col`: Label column (binary click).
+- `ctr.weight_col`: Optional weight column (stored as net_worth).
+- `ctr.max_conditions`: Cap condition vocab; others map to a single id.
+- `ctr.filter_col`: Optional filter column for top-k filtering.
+- `ctr.filter_top_k`: Top-k values to keep (0/empty = disabled).
+- `ctr.drop_na`: Drop rows with NA in selected columns.
+- `ctr.plot_filter_stats`: If true, show top-k stats plot.
+- `ctr.filter_test`: Apply filter_top_k to the test set too.
+- `ctr.test_has_labels`: If true, treat test CSV as labeled.
+- `ctr.plot_sample_size`: Sample size for distribution plots (0 = off).
+- `ctr.balance_by_condition`: If true, downsample training to the
+  minimum condition count.
+
+Example: keep the top 50 ads by impressions and balance the training set:
+
+```json
+"ctr": {
+  "filter_col": "C14",
+  "filter_top_k": 50,
+  "balance_by_condition": true
+}
+```
+
+Note: the notebook also contains a pre-step to cache top-k filtered
+CSVs under `data/` when `filter_col` and `filter_top_k` are set.
+
+### synthetic
+These settings are used when `data.source` is `synthetic`.
+
+- `synthetic.num_conditions`: Number of synthetic conditions.
+- `synthetic.min_samples_per_condition` / `synthetic.max_samples_per_condition`:
+  Samples per condition.
+- `synthetic.num_numeric_features`: Number of numeric features to emit
+  (>= 2).
+- `synthetic.base_mu_ln` / `synthetic.base_sigma_ln`: Lognormal base for
+  net worth.
+- `synthetic.sigmoid_mu_range` / `synthetic.sigmoid_s_range`: Sigmoid
+  parameters for net-worth response (range + steps).
+- `synthetic.age_mu_range` / `synthetic.age_sigma_range`: Age response
+  parameters (range + steps).
+- `synthetic.interest_scale_log10_range`: Log10 scale for interest curve.
+- `synthetic.age_min` / `synthetic.age_max`: Age bounds.
+- `synthetic.extra_feature_dist`: Mean/std for extra noise features.
+
+Example: small synthetic dataset with 4 conditions and 3 features:
+
+```json
+"synthetic": {
+  "num_conditions": 4,
+  "min_samples_per_condition": 50000,
+  "max_samples_per_condition": 50000,
+  "num_numeric_features": 3
+}
+```
+
+### plots
+- `plots.data_before_training`: Plot data distributions before training.
+- `plots.data_after_training`: Plot data distributions after training.
+- `plots.eval_hist_epochs`: Plot log10(p) histogram each epoch.
+- `plots.loss_curves`: Plot train/eval loss curves.
+- `plots.eval_pred_hist`: Plot log10(p) histogram after training.
+- `plots.eval_pred_by_condition`: Plot per-condition predictions.
+- `plots.eval_pred_value_range`: Log10(p) plot range as [min, max].
+- `plots.le_stats`: Plot LE numerator/denominator stats per condition.
+- `plots.print_eval_summary`: Print eval prediction summary.
+- `plots.print_le_stats_table`: Print LE stats table.
+- `plots.ctr_data_distributions`: Enable CTR feature plots.
+- `plots.ctr_label_rates`: Plot per-condition label rates (CTR).
+- `plots.ctr_max_features`: Max numeric features to plot.
+- `plots.ctr_log10_features`: Numeric feature names to log10-transform.
+- `plots.ctr_use_density`: Use density for CTR feature plots.
+
+### logging
+- `logging.print_loader_note`: Print DataLoader configuration summary.
+
+### evaluation
+- `evaluation.use_test_labels`: If true and `ctr.test_has_labels`, use
+  test labels for metrics.
+- `evaluation.split`: `train`, `eval`, or `test` for evaluation.
+- `evaluation.ece_bins`: Number of calibration bins.
+- `evaluation.ece_min_count`: Minimum samples per ECE bin.
+- `evaluation.small_prob_max`: Threshold for "small p" calibration.
+- `evaluation.small_prob_quantile`: Quantile fallback if no preds are
+  below `small_prob_max`.
+- `evaluation.per_ad_top_k`: Top-k conditions to print for metrics.
+- `evaluation.print_per_ad`: Print per-condition metrics table.
+- `evaluation.print_calibration_table`: Print full ECE bin table.
+
+Example: evaluate on test labels when available:
+
+```json
+"evaluation": {
+  "split": "test",
+  "use_test_labels": true,
+  "per_ad_top_k": 20
+}
+```
