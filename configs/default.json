@@ -105,7 +105,8 @@
     "plot_filter_stats": true,
     "filter_test": true,
     "test_has_labels": false,
-    "plot_sample_size": 200000
+    "plot_sample_size": 200000,
+    "balance_by_condition": true
   },
   "synthetic": {
     "num_conditions": 6,

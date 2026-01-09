@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import os
 import numpy as np
@@ -79,6 +79,38 @@ def _build_loader_with_fallback(dataset: Dataset, *, shuffle: bool, role: str, l
         if test_iter is not None and hasattr(test_iter, "_shutdown_workers"):
             test_iter._shutdown_workers()
         return _instantiate_loader(dataset, shuffle=shuffle, loader_common=loader_common, worker_kwargs=worker_kwargs)
+
+
+def _apply_indices(arr: Optional[np.ndarray], idx: np.ndarray) -> Optional[np.ndarray]:
+    if arr is None:
+        return None
+    return arr[idx]
+
+
+def _balance_indices_by_condition(
+    conds: np.ndarray,
+    num_conditions: int,
+    rng: np.random.Generator,
+) -> Tuple[Optional[np.ndarray], int, np.ndarray]:
+    c = np.asarray(conds, dtype=np.int64).reshape(-1)
+    counts = np.bincount(c, minlength=int(num_conditions))
+    nonzero_counts = counts[counts > 0]
+    if nonzero_counts.size == 0:
+        return None, 0, counts
+    min_count = int(nonzero_counts.min())
+    keep_idx = []
+    for cond_id in range(int(num_conditions)):
+        cond_idx = np.flatnonzero(c == cond_id)
+        if cond_idx.size == 0:
+            continue
+        if cond_idx.size > min_count:
+            cond_idx = rng.choice(cond_idx, size=min_count, replace=False)
+        keep_idx.append(cond_idx)
+    if not keep_idx:
+        return None, min_count, counts
+    keep_idx = np.concatenate(keep_idx)
+    keep_idx = rng.permutation(keep_idx)
+    return keep_idx, min_count, counts
 
 
 def build_dataloaders(
@@ -213,6 +245,8 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
 
     plot_data = {}
     labels_test = None
+    plot_sample_size = 0
+    balance_by_condition = False
     if source == "ctr":
         train_df, test_df, stats_df, top_values = load_ctr_frames(cfg["ctr"])
         arrays = build_ctr_arrays(train_df, test_df, cfg["ctr"])
@@ -231,23 +265,13 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
         num_conditions = arrays["num_conditions"]
         cat_sizes = arrays["cat_sizes"]
         cat_cols = arrays["cat_cols"]
+        balance_by_condition = bool(cfg.get("ctr", {}).get("balance_by_condition", False))
+        plot_sample_size = int(cfg["ctr"].get("plot_sample_size", 0) or 0)
         if stats_df is not None:
             plot_data["ctr_stats"] = {
                 "stats_df": stats_df,
                 "labels": [str(v) for v in stats_df.index.to_list()],
                 "filter_col": cfg["ctr"].get("filter_col"),
-            }
-        plot_sample_size = int(cfg["ctr"].get("plot_sample_size", 0) or 0)
-        if plot_sample_size != 0:
-            rng = np.random.default_rng(seed)
-            n_plot = min(plot_sample_size, len(labels))
-            idx = rng.choice(len(labels), size=n_plot, replace=False)
-            plot_data["ctr_distributions"] = {
-                "xnum": xnum[idx],
-                "conds": conds[idx],
-                "labels": labels[idx],
-                "feature_names": feature_names,
-                "num_conditions": num_conditions,
             }
     elif source == "synthetic":
         dataset = make_dataset(cfg["synthetic"], seed=seed)
@@ -291,6 +315,45 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
     nw_eval = net_worth[eval_idx]
     p_train = probs[train_idx] if probs is not None else None
     p_eval = probs[eval_idx] if probs is not None else None
+
+    if balance_by_condition:
+        balance_rng = np.random.default_rng(seed)
+        keep_idx, min_count, counts = _balance_indices_by_condition(
+            c_train,
+            num_conditions,
+            balance_rng,
+        )
+        if keep_idx is None:
+            print("[WARN] balance_by_condition is enabled but no training samples are available; skipping.")
+        else:
+            before = len(c_train)
+            x_train = x_train[keep_idx]
+            x_cat_train = x_cat_train[keep_idx]
+            c_train = c_train[keep_idx]
+            y_train = y_train[keep_idx]
+            nw_train = nw_train[keep_idx]
+            p_train = _apply_indices(p_train, keep_idx)
+            active_conditions = int((counts > 0).sum())
+            print(
+                "Balanced training data by condition: "
+                f"min_count={min_count:,} across {active_conditions} conditions; "
+                f"kept {len(c_train):,} of {before:,} rows."
+            )
+
+    if source == "ctr" and plot_sample_size != 0:
+        if len(y_train) == 0:
+            print("[WARN] CTR plot sample requested but training data is empty.")
+        else:
+            rng = np.random.default_rng(seed)
+            n_plot = min(plot_sample_size, len(y_train))
+            idx = rng.choice(len(y_train), size=n_plot, replace=False)
+            plot_data["ctr_distributions"] = {
+                "xnum": x_train[idx],
+                "conds": c_train[idx],
+                "labels": y_train[idx],
+                "feature_names": feature_names,
+                "num_conditions": num_conditions,
+            }
 
     y_test = None
     if xnum_test is not None:
