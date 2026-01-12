@@ -1,7 +1,7 @@
 import json
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 def load_config(path: str) -> Dict[str, Any]:
@@ -54,3 +54,58 @@ def get_condition_label(cfg: Dict[str, Any]) -> str:
 
 def loss_label(loss_mode: str) -> str:
     return "LE" if loss_mode.lower().strip() == "localized_entropy" else "BCE"
+
+
+def resolve_loss_modes(loss_mode) -> list:
+    def normalize(mode: str) -> Optional[str]:
+        if mode is None:
+            return None
+        text = str(mode).lower().strip()
+        if text in {"le", "localized_entropy"}:
+            return "localized_entropy"
+        if text == "bce":
+            return "bce"
+        return None
+
+    def expand(mode: str) -> list:
+        text = str(mode).lower().strip()
+        if text in {"both", "bce+le", "le+bce", "bce_le", "le_bce"}:
+            return ["bce", "localized_entropy"]
+        if "," in text:
+            items = []
+            for part in text.split(","):
+                norm = normalize(part)
+                if norm is not None:
+                    items.append(norm)
+            return items
+        norm = normalize(text)
+        return [norm] if norm is not None else []
+
+    modes = []
+    if isinstance(loss_mode, (list, tuple)):
+        for item in loss_mode:
+            if item is None:
+                continue
+            if isinstance(item, str) and item.lower().strip() in {
+                "both",
+                "bce+le",
+                "le+bce",
+                "bce_le",
+                "le_bce",
+            }:
+                modes.extend(["bce", "localized_entropy"])
+                continue
+            norm = normalize(item)
+            if norm is not None:
+                modes.append(norm)
+    else:
+        modes.extend(expand(loss_mode))
+
+    seen = set()
+    ordered = []
+    for mode in modes:
+        if mode in seen:
+            continue
+        seen.add(mode)
+        ordered.append(mode)
+    return ordered

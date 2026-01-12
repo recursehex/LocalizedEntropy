@@ -3,13 +3,13 @@
     "seed": 42
   },
   "experiment": {
-    "active": "baseline",
+    "active": "bce_baseline",
     "overrides": {},
     "definitions": {
       "baseline": {},
       "bce_baseline": {
         "training": {
-          "loss_mode": "bce"
+          "loss_mode": "both"
         }
       },
       "small_net": {
@@ -66,9 +66,7 @@
     "train_path": "data/train_top3.csv",
     "test_path": "data/test.csv",
     "read_rows": 10000000,
-    "numeric_cols": [
-      
-    ],
+    "numeric_cols": [],
     "categorical_cols": [
       "C1",
       "hour",
@@ -180,5 +178,11 @@
     "print_per_ad": true,
     "print_calibration_table": false,
     "small_prob_quantile": 0.1
+  },
+  "comparison": {
+    "enabled": true,
+    "top_k": 20,
+    "sort_by": "count",
+    "print_table": true
   }
 }

@@ -50,11 +50,12 @@ Example:
 - `training.epochs`: Number of training epochs.
 - `training.lr`: Adam learning rate.
 - `training.batch_size`: Train/eval batch size.
-- `training.loss_mode`: `localized_entropy` or `bce`.
+- `training.loss_mode`: `localized_entropy`, `bce`, or `both` (train BCE
+  and LE sequentially).
 - `training.eval_every_n_batches`: If > 0, run mid-epoch eval callbacks
   at that interval.
 - `training.eval_compare_losses`: List of loss modes to evaluate after
-  training for comparison.
+  training for comparison (ignored when `loss_mode` is `both`).
 
 Example:
 
@@ -190,3 +191,14 @@ Example: evaluate on test labels when available:
   "per_ad_top_k": 20
 }
 ```
+
+### comparison
+Used when `training.loss_mode` is `both` to compare BCE vs LE per-condition
+calibration and LE ratio terms.
+
+- `comparison.enabled`: If true, run the per-condition comparison.
+- `comparison.top_k`: Number of rows to include in the table plot.
+- `comparison.sort_by`: Sort key for the comparison table
+  (`count`, `delta_calibration`, `abs_delta_calibration`,
+  `delta_le_ratio`, `abs_delta_le_ratio`).
+- `comparison.print_table`: Print a tab-separated comparison table.

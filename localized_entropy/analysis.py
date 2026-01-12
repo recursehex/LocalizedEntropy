@@ -117,6 +117,29 @@ def print_pred_summary(
         print(top.to_string(float_format=lambda x: f"{x:.6f}"))
 
 
+def print_pred_stats_by_condition(
+    preds: np.ndarray,
+    conds: np.ndarray,
+    num_conditions: int,
+    *,
+    name: str = "Eval",
+) -> None:
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    c = np.asarray(conds, dtype=np.int64).reshape(-1)
+    counts = np.bincount(c, minlength=int(num_conditions))
+    print(f"{name} prediction stats per condition:")
+    for cond in range(int(num_conditions)):
+        n = int(counts[cond])
+        if n == 0:
+            print(f"  cond {cond}: n=0")
+            continue
+        pc = p[c == cond]
+        print(
+            f"  cond {cond}: n={n} min={pc.min():.6g} max={pc.max():.6g} "
+            f"mean={pc.mean():.6g}"
+        )
+
+
 def bce_log_loss(preds: np.ndarray, labels: np.ndarray, eps: float = 1e-12) -> float:
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
@@ -267,6 +290,71 @@ def per_condition_metrics(
             }
         )
     return pd.DataFrame(rows).sort_values("count", ascending=False)
+
+
+def per_condition_calibration(
+    preds: np.ndarray,
+    labels: np.ndarray,
+    conds: np.ndarray,
+    eps: float = 1e-12,
+) -> pd.DataFrame:
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    c = np.asarray(conds, dtype=np.int64).reshape(-1)
+    if c.size == 0:
+        return pd.DataFrame(
+            columns=["condition", "count", "base_rate", "pred_mean", "calibration"]
+        )
+    max_id = int(c.max())
+    counts = np.bincount(c, minlength=max_id + 1)
+    pred_sum = np.bincount(c, weights=p, minlength=max_id + 1)
+    label_sum = np.bincount(c, weights=y, minlength=max_id + 1)
+    denom = np.maximum(counts, 1)
+    base_rate = label_sum / denom
+    pred_mean = pred_sum / denom
+    calibration = np.divide(
+        pred_mean,
+        base_rate,
+        out=np.full_like(pred_mean, np.nan, dtype=np.float64),
+        where=base_rate > eps,
+    )
+    df = pd.DataFrame(
+        {
+            "condition": np.arange(max_id + 1, dtype=np.int64),
+            "count": counts.astype(np.int64),
+            "base_rate": base_rate,
+            "pred_mean": pred_mean,
+            "calibration": calibration,
+        }
+    )
+    return df.sort_values("count", ascending=False)
+
+
+def le_stats_to_frame(stats: dict) -> pd.DataFrame:
+    rows = []
+    for cond, payload in stats.items():
+        rows.append(
+            {
+                "condition": int(cond),
+                "le_numerator": float(payload.get("Numerator", float("nan"))),
+                "le_denominator": float(payload.get("Denominator", float("nan"))),
+                "le_ratio": float(payload.get("Numerator/denominator", float("nan"))),
+                "label_ones": int(payload.get("Number of samples with label 1", 0)),
+                "label_zeros": int(payload.get("Number of samples with label 0", 0)),
+            }
+        )
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "condition",
+                "le_numerator",
+                "le_denominator",
+                "le_ratio",
+                "label_ones",
+                "label_zeros",
+            ]
+        )
+    return pd.DataFrame(rows).sort_values("condition")
 
 
 def summarize_per_ad_train_eval_rates(

@@ -75,6 +75,8 @@ Step-by-step pipeline:
   - BCE (`torch.nn.BCEWithLogitsLoss`).
 - For LE, a streaming per-condition base rate is updated each batch.
 - Optional mid-epoch eval callbacks can plot prediction histograms.
+- If `training.loss_mode` is set to `both`, the notebook trains BCE and
+  LE sequentially and stores results for comparison.
 
 9) Post-training evaluation
 - Evaluates on the configured split (`evaluation.split`).
@@ -85,6 +87,10 @@ Step-by-step pipeline:
   - Per-condition ECE and base rates.
 - Optionally compares loss values under alternate loss modes
   (`training.eval_compare_losses`).
+- If both losses are trained, the notebook builds a per-condition
+  comparison table (calibration ratio + LE ratio deltas) using
+  `localized_entropy/compare.py`, printing an aligned text table plus a
+  BCE-vs-LE summary (accuracy, logloss, brier, ECE).
 
 10) Per-condition train vs eval rate diagnostics
 - `summarize_per_ad_train_eval_rates` compares per-condition
@@ -130,6 +136,12 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
   - Summary stats (label, condition, prediction).
   - ECE, ROC-AUC, PR-AUC.
   - Per-condition metrics and LE numerator/denominator diagnostics.
+  - Per-condition calibration ratios (pred mean / label mean) and helpers
+    for LE ratio tables.
+- `localized_entropy/experiments.py`: experiment helpers for building
+  models, resolving eval splits, and training single-loss runs.
+- `localized_entropy/compare.py`: per-condition BCE vs LE comparison
+  table builder and plot/save utilities.
 
 ## Plotting and outputs
 
@@ -138,6 +150,7 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
   - Prediction histograms (log10 p).
   - Loss curves.
   - Per-condition LE diagnostics.
+  - Table plots for BCE vs LE per-condition comparisons.
 - Outputs are shown inline in the notebook and optionally saved by
   ad-hoc scripts under `results/`.
 
@@ -146,3 +159,5 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
 - `localized_entropy.ipynb`: end-to-end execution.
 - `configs/default.json`: experiment configuration.
 - `localized_entropy/`: reusable pipeline, model, training, and analysis.
+- `ad_id_compare_bce_le.py`: trains BCE/LE models and writes per-condition
+  comparison tables (calibration + LE ratio deltas) to `results/`.

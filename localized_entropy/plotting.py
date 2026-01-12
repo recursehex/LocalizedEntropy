@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional, Tuple
 
 import numpy as np
@@ -304,3 +305,117 @@ def plot_pred_to_train_rate(
     ax.set_ylabel("Prediction / Train Click Rate")
     ax.grid(True, alpha=0.3)
     plt.show()
+
+
+def build_eval_epoch_plotter(
+    train_eval_name: str,
+    train_eval_conds: Optional[np.ndarray],
+    num_conditions: int,
+    eval_value_range: Tuple[float, float],
+    condition_label: str,
+    loss_label: str,
+):
+    def _plot(preds: np.ndarray, epoch: int) -> None:
+        if preds.size == 0:
+            print(f"Epoch {epoch}: {train_eval_name} set empty; skipping eval plots.")
+            return
+        if train_eval_conds is None:
+            print(f"Epoch {epoch}: {train_eval_name} conditions unavailable; skipping eval plots.")
+            return
+        plot_eval_predictions_by_condition(
+            preds,
+            train_eval_conds,
+            num_conditions,
+            value_range=eval_value_range,
+            title=(
+                f"Epoch {epoch} {train_eval_name} Predictions by {condition_label} ("
+                f"{loss_label})"
+            ),
+            print_counts=False,
+        )
+    return _plot
+
+
+def build_eval_batch_plotter(
+    train_eval_name: str,
+    train_eval_conds: Optional[np.ndarray],
+    num_conditions: int,
+    eval_value_range: Tuple[float, float],
+    condition_label: str,
+    loss_label: str,
+):
+    def _plot(preds: np.ndarray, epoch: int, batch_idx: int) -> None:
+        if preds.size == 0:
+            print(
+                f"Epoch {epoch} Batch {batch_idx}: {train_eval_name} set empty; skipping eval plots."
+            )
+            return
+        if train_eval_conds is None:
+            print(
+                f"Epoch {epoch} Batch {batch_idx}: {train_eval_name} conditions unavailable; skipping eval plots."
+            )
+            return
+        plot_eval_predictions_by_condition(
+            preds,
+            train_eval_conds,
+            num_conditions,
+            value_range=eval_value_range,
+            title=(
+                f"Epoch {epoch} Batch {batch_idx} {train_eval_name} Predictions by {condition_label} ("
+                f"{loss_label})"
+            ),
+            print_counts=False,
+        )
+    return _plot
+
+
+def plot_metric_comparison_table(
+    df,
+    *,
+    columns,
+    title: str,
+    max_rows: int = 20,
+    output_path: Optional[str] = None,
+    float_format: str = "{:.4g}",
+    show: bool = True,
+) -> None:
+    if df is None or len(df) == 0:
+        print("[WARN] No data for comparison table; skipping plot.")
+        return
+    max_rows = max(int(max_rows), 1)
+    columns = list(columns)
+    table_df = df.loc[:, columns].head(max_rows)
+    cell_text = []
+    for _, row in table_df.iterrows():
+        row_values = []
+        for col in columns:
+            val = row[col]
+            if isinstance(val, (np.integer, int)):
+                row_values.append(str(int(val)))
+            elif isinstance(val, (np.floating, float)):
+                if np.isnan(val):
+                    row_values.append("nan")
+                else:
+                    row_values.append(float_format.format(float(val)))
+            else:
+                row_values.append(str(val))
+        cell_text.append(row_values)
+
+    width = max(8.0, 1.2 * len(columns))
+    height = max(2.0, 0.4 * (len(table_df) + 1))
+    fig, ax = plt.subplots(figsize=(width, height))
+    ax.axis("off")
+    table = ax.table(cellText=cell_text, colLabels=columns, loc="center")
+    table.auto_set_font_size(False)
+    table.set_fontsize(8)
+    table.scale(1.0, 1.2)
+    ax.set_title(title)
+    fig.tight_layout()
+    if output_path:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path, dpi=200)
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
