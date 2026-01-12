@@ -199,6 +199,54 @@ def pr_auc_score(preds: np.ndarray, labels: np.ndarray) -> float:
     return ap
 
 
+def _binary_classification_counts(
+    preds: np.ndarray,
+    labels: np.ndarray,
+    *,
+    threshold: float = 0.5,
+) -> Tuple[int, int, int, int]:
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    if p.size == 0 or y.size == 0:
+        return 0, 0, 0, 0
+    y_true = y >= 0.5
+    y_pred = p >= threshold
+    tp = int(np.sum(y_pred & y_true))
+    fp = int(np.sum(y_pred & ~y_true))
+    tn = int(np.sum(~y_pred & ~y_true))
+    fn = int(np.sum(~y_pred & y_true))
+    return tp, fp, tn, fn
+
+
+def binary_classification_metrics(
+    preds: np.ndarray,
+    labels: np.ndarray,
+    *,
+    threshold: float = 0.5,
+) -> dict:
+    tp, fp, tn, fn = _binary_classification_counts(
+        preds, labels, threshold=threshold
+    )
+    total = tp + fp + tn + fn
+    if total == 0:
+        return {
+            "accuracy": float("nan"),
+            "precision": float("nan"),
+            "recall": float("nan"),
+            "f1": float("nan"),
+        }
+    accuracy = (tp + tn) / total
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1 = 2.0 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+    return {
+        "accuracy": float(accuracy),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(f1),
+    }
+
+
 def expected_calibration_error(
     preds: np.ndarray,
     labels: np.ndarray,
@@ -253,6 +301,7 @@ def per_condition_metrics(
     bins: int = 20,
     min_count: int = 1,
     small_prob_max: float = 0.01,
+    threshold: float = 0.5,
 ) -> pd.DataFrame:
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
@@ -268,6 +317,7 @@ def per_condition_metrics(
         p_c = p[mask]
         y_c = y[mask]
         bce = bce_log_loss(p_c, y_c)
+        cls_metrics = binary_classification_metrics(p_c, y_c, threshold=threshold)
         ece, _ = expected_calibration_error(p_c, y_c, bins=bins, min_count=min_count)
         small_mask = p_c <= small_prob_max
         if small_mask.any():
@@ -285,6 +335,8 @@ def per_condition_metrics(
                 "count": count,
                 "base_rate": float(y_c.mean()),
                 "bce": bce,
+                "accuracy": cls_metrics["accuracy"],
+                "f1": cls_metrics["f1"],
                 "ece": ece,
                 "ece_small": ece_small,
             }

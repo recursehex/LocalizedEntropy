@@ -307,6 +307,39 @@ def plot_pred_to_train_rate(
     plt.show()
 
 
+def plot_per_ad_f1_logp(
+    per_ad_df,
+    *,
+    condition_label: str,
+    name: str = "Eval",
+    bins: int = 60,
+) -> None:
+    if per_ad_df is None or len(per_ad_df) == 0:
+        print("[WARN] No per-condition metrics available; skipping F1 log plot.")
+        return
+    if "f1" not in per_ad_df.columns:
+        print("[WARN] Missing per-condition F1 column; skipping F1 log plot.")
+        return
+    f1_scores = np.asarray(per_ad_df["f1"], dtype=np.float64)
+    if not np.isfinite(f1_scores).any():
+        print("[WARN] F1 scores are not finite; skipping F1 log plot.")
+        return
+    eps = 1e-12
+    log10_f1 = np.log10(np.clip(f1_scores, eps, 1.0))
+    finite = np.isfinite(log10_f1)
+    if not finite.any():
+        print("[WARN] Log10(F1) is empty after filtering; skipping plot.")
+        return
+    plt.figure(figsize=(8, 5))
+    plt.hist(log10_f1[finite], bins=bins, color="#4477aa", alpha=0.85)
+    plt.title(f"{name} per-{condition_label} F1 score (log10)")
+    plt.xlabel("log10(F1 score)")
+    plt.ylabel("Count")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+
 def build_eval_epoch_plotter(
     train_eval_name: str,
     train_eval_conds: Optional[np.ndarray],

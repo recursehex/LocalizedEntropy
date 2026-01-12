@@ -84,6 +84,7 @@ Step-by-step pipeline:
   plots.
 - If labels are available, computes:
   - BCE log loss, ECE, ROC-AUC, PR-AUC.
+  - Accuracy/F1 at 0.5 (global) plus per-condition accuracy/F1.
   - Per-condition ECE and base rates.
 - Optionally compares loss values under alternate loss modes
   (`training.eval_compare_losses`).
@@ -135,6 +136,7 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
 - `localized_entropy/analysis.py`:
   - Summary stats (label, condition, prediction).
   - ECE, ROC-AUC, PR-AUC.
+  - Binary accuracy/F1 metrics and per-condition diagnostics.
   - Per-condition metrics and LE numerator/denominator diagnostics.
   - Per-condition calibration ratios (pred mean / label mean) and helpers
     for LE ratio tables.
@@ -150,6 +152,7 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
   - Prediction histograms (log10 p).
   - Loss curves.
   - Per-condition LE diagnostics.
+  - Per-condition F1 log10 histogram.
   - Table plots for BCE vs LE per-condition comparisons.
 - Outputs are shown inline in the notebook and optionally saved by
   ad-hoc scripts under `results/`.
