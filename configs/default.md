@@ -203,6 +203,14 @@ Optional repeated-run significance testing when training both losses.
   `scipy.stats.wilcoxon`.
 - `repeats.wilcoxon_alternative`: `alternative` hypothesis for
   `scipy.stats.wilcoxon`.
+- `repeats.per_condition_top_k`: Rows to print for per-condition
+  calibration tests.
+- `repeats.per_condition_sort_by`: Sort key for per-condition calibration
+  tests (`p_value`, `delta_mean`, `abs_delta_mean`, `count`, `base_rate`).
+- `repeats.per_condition_min_count`: Minimum condition sample count to
+  include in per-condition calibration tests.
+- Repeated-run summaries include `ece_small` using
+  `evaluation.small_prob_max` / `evaluation.small_prob_quantile`.
 
 Example: run 10 paired repeats and report Wilcoxon p-values:
 

@@ -185,7 +185,10 @@
     "seed_stride": 1,
     "include_base_run": true,
     "wilcoxon_zero_method": "wilcox",
-    "wilcoxon_alternative": "two-sided"
+    "wilcoxon_alternative": "two-sided",
+    "per_condition_top_k": 20,
+    "per_condition_sort_by": "p_value",
+    "per_condition_min_count": 1
   },
   "comparison": {
     "enabled": true,

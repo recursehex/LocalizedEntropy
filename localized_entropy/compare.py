@@ -134,6 +134,8 @@ def summarize_model_metrics(
     ece_bins: int = 20,
     ece_min_count: int = 1,
     threshold: float = 0.5,
+    small_prob_max: float = 0.01,
+    small_prob_quantile: float = 0.1,
 ) -> dict:
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
@@ -141,11 +143,27 @@ def summarize_model_metrics(
     brier = float(np.mean((p - y) ** 2))
     acc = float(np.mean((p >= threshold) == (y >= 0.5)))
     ece, _ = expected_calibration_error(p, y, bins=ece_bins, min_count=ece_min_count)
+    small_threshold = float(small_prob_max)
+    small_mask = p <= small_threshold
+    if not small_mask.any() and small_prob_quantile is not None:
+        quantile_threshold = float(np.quantile(p, small_prob_quantile))
+        small_threshold = quantile_threshold
+        small_mask = p <= small_threshold
+    if small_mask.any():
+        ece_small, _ = expected_calibration_error(
+            p[small_mask],
+            y[small_mask],
+            bins=ece_bins,
+            min_count=ece_min_count,
+        )
+    else:
+        ece_small = float("nan")
     return {
         "logloss": logloss,
         "brier": brier,
         "accuracy": acc,
         "ece": float(ece),
+        "ece_small": float(ece_small),
     }
 
 
@@ -283,6 +301,7 @@ _DEFAULT_REPEAT_METRICS: Dict[str, bool] = {
     "logloss": True,
     "brier": True,
     "ece": True,
+    "ece_small": True,
     "accuracy": False,
 }
 
@@ -316,6 +335,8 @@ def build_repeat_metrics_frame(
     ece_bins: int = 20,
     ece_min_count: int = 1,
     threshold: float = 0.5,
+    small_prob_max: float = 0.01,
+    small_prob_quantile: float = 0.1,
     run_label: str = "run",
     run_values: Optional[Iterable[int]] = None,
 ) -> pd.DataFrame:
@@ -335,6 +356,8 @@ def build_repeat_metrics_frame(
             ece_bins=ece_bins,
             ece_min_count=ece_min_count,
             threshold=threshold,
+            small_prob_max=small_prob_max,
+            small_prob_quantile=small_prob_quantile,
         )
         rows.append(
             {
@@ -432,3 +455,89 @@ def format_wilcoxon_summary(
         top_k=len(summary_df),
         float_format=float_format,
     )
+
+
+def _per_condition_pred_mean(
+    preds: np.ndarray,
+    conds: np.ndarray,
+    num_conditions: int,
+) -> np.ndarray:
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    c = np.asarray(conds, dtype=np.int64).reshape(-1)
+    sums = np.bincount(c, weights=p, minlength=num_conditions)
+    counts = np.bincount(c, minlength=num_conditions)
+    denom = np.maximum(counts, 1)
+    return sums / denom
+
+
+def build_per_condition_calibration_wilcoxon(
+    bce_runs: List[TrainRunResult],
+    le_runs: List[TrainRunResult],
+    eval_labels: np.ndarray,
+    eval_conds: np.ndarray,
+    *,
+    zero_method: str = "wilcox",
+    alternative: str = "two-sided",
+    min_count: int = 1,
+) -> pd.DataFrame:
+    if len(bce_runs) != len(le_runs):
+        raise ValueError("Repeat run counts do not match between BCE and LE.")
+    labels = np.asarray(eval_labels, dtype=np.float64).reshape(-1)
+    conds = np.asarray(eval_conds, dtype=np.int64).reshape(-1)
+    if labels.size == 0 or conds.size == 0:
+        raise ValueError("Eval labels/conditions are empty; cannot compare calibration.")
+    num_conditions = int(conds.max()) + 1
+    counts = np.bincount(conds, minlength=num_conditions)
+    label_sum = np.bincount(conds, weights=labels, minlength=num_conditions)
+    base_rate = label_sum / np.maximum(counts, 1)
+
+    bce_gaps = []
+    for result in bce_runs:
+        pred_mean = _per_condition_pred_mean(result.eval_preds, conds, num_conditions)
+        bce_gaps.append(np.abs(pred_mean - base_rate))
+    le_gaps = []
+    for result in le_runs:
+        pred_mean = _per_condition_pred_mean(result.eval_preds, conds, num_conditions)
+        le_gaps.append(np.abs(pred_mean - base_rate))
+
+    bce_gaps = np.stack(bce_gaps, axis=0)
+    le_gaps = np.stack(le_gaps, axis=0)
+
+    rows = []
+    for cond_id in range(num_conditions):
+        if counts[cond_id] < min_count:
+            continue
+        bce_vals = bce_gaps[:, cond_id]
+        le_vals = le_gaps[:, cond_id]
+        delta = bce_vals - le_vals
+        stat, p_value = _safe_wilcoxon(
+            bce_vals,
+            le_vals,
+            zero_method=zero_method,
+            alternative=alternative,
+        )
+        rows.append(
+            {
+                "condition": int(cond_id),
+                "count": int(counts[cond_id]),
+                "base_rate": float(base_rate[cond_id]),
+                "bce_gap": float(np.mean(bce_vals)),
+                "le_gap": float(np.mean(le_vals)),
+                "delta_mean": float(np.mean(delta)),
+                "n": int(delta.size),
+                "n_nonzero": int(np.count_nonzero(delta)),
+                "statistic": stat,
+                "p_value": p_value,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def sort_per_condition_wilcoxon_frame(df: pd.DataFrame, sort_by: str) -> pd.DataFrame:
+    if sort_by == "p_value":
+        return df.sort_values("p_value", ascending=True)
+    if sort_by == "abs_delta_mean":
+        return df.sort_values("delta_mean", key=lambda s: s.abs(), ascending=False)
+    if sort_by in {"delta_mean", "count", "base_rate", "bce_gap", "le_gap"}:
+        return df.sort_values(sort_by, ascending=False)
+    return df.sort_values(sort_by, ascending=False)

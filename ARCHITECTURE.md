@@ -96,7 +96,11 @@ Step-by-step pipeline:
 10) Optional repeated-run significance testing
 - When `repeats.enabled=true`, the notebook re-trains BCE/LE across
   multiple seeds and computes paired Wilcoxon signed-rank tests over
-  logloss/brier/ece/accuracy deltas to report p-values.
+  logloss/brier/ece/ece_small/accuracy deltas to report p-values, with
+  `ece_small` focused on low-probability predictions.
+- If evaluation conditions are available, it also computes per-condition
+  calibration Wilcoxon tests on absolute gaps between per-condition
+  prediction means and base rates.
 
 11) Per-condition train vs eval rate diagnostics
 - `summarize_per_ad_train_eval_rates` compares per-condition

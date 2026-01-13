@@ -42,7 +42,7 @@ The notebook stays small and delegates everything to the modules in `localized_e
 - `model`: hidden sizes, embedding dimension, dropout.
 - `training`: epochs, learning rate, batch size, loss mode, and loss comparisons.
 - `plots`: toggles for every chart and summary table.
-- `evaluation`: bins/thresholds for BCE + calibration summaries (including small-probability calibration).
+- `evaluation`: bins/thresholds for BCE + calibration summaries (including small-probability calibration, aka ECE computed only on low-probability predictions).
 
 **Notes**
 - Normalization uses training-set mean/std for both real and synthetic data to keep scaling consistent.
