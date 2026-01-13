@@ -34,7 +34,7 @@
     "num_workers_env": "LOCALIZED_ENTROPY_NUM_WORKERS"
   },
   "training": {
-    "epochs": 6,
+    "epochs": 3,
     "lr": 0.001,
     "batch_size": 25000,
     "loss_mode": "localized_entropy",
@@ -178,6 +178,14 @@
     "print_per_ad": true,
     "print_calibration_table": false,
     "small_prob_quantile": 0.1
+  },
+  "repeats": {
+    "enabled": true,
+    "num_runs": 10,
+    "seed_stride": 1,
+    "include_base_run": true,
+    "wilcoxon_zero_method": "wilcox",
+    "wilcoxon_alternative": "two-sided"
   },
   "comparison": {
     "enabled": true,

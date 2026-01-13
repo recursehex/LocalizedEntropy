@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import Dict, Iterable, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
+from scipy.stats import wilcoxon
 
 from localized_entropy.analysis import bce_log_loss, expected_calibration_error
 
@@ -274,3 +277,158 @@ def compare_bce_le_runs(
     comparison = comparison.rename(columns={"condition": condition_label})
 
     return comparison
+
+
+_DEFAULT_REPEAT_METRICS: Dict[str, bool] = {
+    "logloss": True,
+    "brier": True,
+    "ece": True,
+    "accuracy": False,
+}
+
+
+def _resolve_repeat_metrics(metrics: Optional[Dict[str, bool]] = None) -> Dict[str, bool]:
+    if metrics is None:
+        return dict(_DEFAULT_REPEAT_METRICS)
+    return dict(metrics)
+
+
+def _safe_wilcoxon(
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    zero_method: str = "wilcox",
+    alternative: str = "two-sided",
+) -> Tuple[float, float]:
+    try:
+        stat, p_value = wilcoxon(x, y, zero_method=zero_method, alternative=alternative)
+    except TypeError:
+        stat, p_value = wilcoxon(x, y, zero_method=zero_method)
+    except ValueError:
+        return float("nan"), float("nan")
+    return float(stat), float(p_value)
+
+
+def build_repeat_metrics_frame(
+    runs: List[TrainRunResult],
+    eval_labels: np.ndarray,
+    *,
+    ece_bins: int = 20,
+    ece_min_count: int = 1,
+    threshold: float = 0.5,
+    run_label: str = "run",
+    run_values: Optional[Iterable[int]] = None,
+) -> pd.DataFrame:
+    labels = np.asarray(eval_labels, dtype=np.float64).reshape(-1)
+    if labels.size == 0:
+        raise ValueError("Eval labels are empty; cannot summarize repeated runs.")
+    if run_values is not None:
+        run_values = list(run_values)
+        if len(run_values) != len(runs):
+            raise ValueError("run_values length does not match run count.")
+
+    rows = []
+    for idx, result in enumerate(runs):
+        metrics = summarize_model_metrics(
+            result.eval_preds,
+            labels,
+            ece_bins=ece_bins,
+            ece_min_count=ece_min_count,
+            threshold=threshold,
+        )
+        rows.append(
+            {
+                run_label: run_values[idx] if run_values is not None else idx,
+                **metrics,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def summarize_repeat_metrics(
+    metrics_df: pd.DataFrame,
+    *,
+    metrics: Optional[Dict[str, bool]] = None,
+) -> pd.DataFrame:
+    metric_map = _resolve_repeat_metrics(metrics)
+    rows = []
+    for metric in metric_map:
+        if metric not in metrics_df.columns:
+            continue
+        values = metrics_df[metric].to_numpy()
+        if values.size == 0:
+            continue
+        std = float(np.std(values, ddof=1)) if values.size > 1 else 0.0
+        rows.append(
+            {
+                "metric": metric,
+                "n": int(values.size),
+                "mean": float(np.mean(values)),
+                "std": std,
+                "min": float(np.min(values)),
+                "max": float(np.max(values)),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_wilcoxon_summary(
+    bce_metrics: pd.DataFrame,
+    le_metrics: pd.DataFrame,
+    *,
+    metrics: Optional[Dict[str, bool]] = None,
+    zero_method: str = "wilcox",
+    alternative: str = "two-sided",
+) -> pd.DataFrame:
+    metric_map = _resolve_repeat_metrics(metrics)
+    rows = []
+    for metric, lower_is_better in metric_map.items():
+        if metric not in bce_metrics.columns or metric not in le_metrics.columns:
+            continue
+        bce_vals = bce_metrics[metric].to_numpy()
+        le_vals = le_metrics[metric].to_numpy()
+        if bce_vals.size != le_vals.size:
+            raise ValueError(f"Repeat runs for '{metric}' do not align between BCE and LE.")
+        delta = (bce_vals - le_vals) if lower_is_better else (le_vals - bce_vals)
+        stat, p_value = _safe_wilcoxon(
+            bce_vals,
+            le_vals,
+            zero_method=zero_method,
+            alternative=alternative,
+        )
+        rows.append(
+            {
+                "metric": metric,
+                "n": int(bce_vals.size),
+                "n_nonzero": int(np.count_nonzero(delta)),
+                "median_delta": float(np.median(delta)) if delta.size else float("nan"),
+                "mean_delta": float(np.mean(delta)) if delta.size else float("nan"),
+                "statistic": stat,
+                "p_value": p_value,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def format_wilcoxon_summary(
+    summary_df: pd.DataFrame,
+    *,
+    float_format: str = "{:.6g}",
+) -> str:
+    if summary_df is None or len(summary_df) == 0:
+        return ""
+    columns = [
+        "metric",
+        "n",
+        "n_nonzero",
+        "median_delta",
+        "mean_delta",
+        "statistic",
+        "p_value",
+    ]
+    return format_comparison_table(
+        summary_df,
+        columns,
+        top_k=len(summary_df),
+        float_format=float_format,
+    )

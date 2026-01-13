@@ -192,6 +192,28 @@ Example: evaluate on test labels when available:
 }
 ```
 
+### repeats
+Optional repeated-run significance testing when training both losses.
+
+- `repeats.enabled`: If true, run repeated BCE vs LE training runs.
+- `repeats.num_runs`: Number of paired runs per loss.
+- `repeats.seed_stride`: Seed increment per run (base = `project.seed`).
+- `repeats.include_base_run`: If true, include the initial run results.
+- `repeats.wilcoxon_zero_method`: `zero_method` argument for
+  `scipy.stats.wilcoxon`.
+- `repeats.wilcoxon_alternative`: `alternative` hypothesis for
+  `scipy.stats.wilcoxon`.
+
+Example: run 10 paired repeats and report Wilcoxon p-values:
+
+```json
+"repeats": {
+  "enabled": true,
+  "num_runs": 10,
+  "seed_stride": 1
+}
+```
+
 ### comparison
 Used when `training.loss_mode` is `both` to compare BCE vs LE per-condition
 calibration and LE ratio terms.

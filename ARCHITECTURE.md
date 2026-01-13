@@ -93,16 +93,21 @@ Step-by-step pipeline:
   `localized_entropy/compare.py`, printing an aligned text table plus a
   BCE-vs-LE summary (accuracy, logloss, brier, ECE).
 
-10) Per-condition train vs eval rate diagnostics
+10) Optional repeated-run significance testing
+- When `repeats.enabled=true`, the notebook re-trains BCE/LE across
+  multiple seeds and computes paired Wilcoxon signed-rank tests over
+  logloss/brier/ece/accuracy deltas to report p-values.
+
+11) Per-condition train vs eval rate diagnostics
 - `summarize_per_ad_train_eval_rates` compares per-condition
   train click rates vs eval mean prediction.
 
-11) Optional test-set inference
+12) Optional test-set inference
 - If a test loader exists and `evaluation.split != test`,
   the notebook runs predictions on the test set and plots
   the same diagnostics (without label-based metrics).
 
-12) Post-training data plots and LE stats
+13) Post-training data plots and LE stats
 - Optionally re-plot data distributions.
 - If labels are available, collects per-condition LE numerator/
   denominator stats and plots them.

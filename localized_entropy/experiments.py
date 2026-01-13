@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -11,6 +11,7 @@ from localized_entropy.analysis import collect_logits
 from localized_entropy.config import get_data_source, loss_label
 from localized_entropy.models import ConditionProbNet
 from localized_entropy.training import evaluate, predict_probs, train_with_epoch_plots
+from localized_entropy.utils import set_seed
 
 
 @dataclass
@@ -183,3 +184,52 @@ def train_single_loss(
         eval_targets=eval_targets,
         eval_conds=eval_conds,
     )
+
+
+def build_seed_sequence(base_seed: int, num_runs: int, seed_stride: int = 1) -> List[int]:
+    if num_runs < 1:
+        return []
+    stride = int(seed_stride)
+    return [int(base_seed) + stride * idx for idx in range(int(num_runs))]
+
+
+def run_repeated_loss_experiments(
+    *,
+    cfg: dict,
+    loss_modes: List[str],
+    splits,
+    loaders,
+    train_eval_loader: DataLoader,
+    eval_loader: DataLoader,
+    device: torch.device,
+    use_cuda: bool,
+    eval_has_labels: bool,
+    seeds: Iterable[int],
+    non_blocking: bool = False,
+    collect_eval_logits: bool = False,
+) -> Dict[str, List[TrainRunResult]]:
+    train_cfg = cfg["training"]
+    results: Dict[str, List[TrainRunResult]] = {loss_mode: [] for loss_mode in loss_modes}
+    for seed in seeds:
+        for loss_mode in loss_modes:
+            set_seed(int(seed), use_cuda)
+            model = build_model(cfg, splits, device)
+            result = train_single_loss(
+                model=model,
+                loss_mode=loss_mode,
+                train_loader=loaders.train_loader,
+                train_eval_loader=train_eval_loader,
+                eval_loader=eval_loader,
+                device=device,
+                epochs=train_cfg["epochs"],
+                lr=train_cfg["lr"],
+                eval_has_labels=eval_has_labels,
+                non_blocking=non_blocking,
+                plot_eval_hist_epochs=False,
+                eval_callback=None,
+                eval_every_n_batches=None,
+                eval_batch_callback=None,
+                collect_eval_logits=collect_eval_logits,
+            )
+            results[loss_mode].append(result)
+    return results
