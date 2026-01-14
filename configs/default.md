@@ -29,6 +29,12 @@ Example:
 }
 ```
 
+Template model definitions included in `configs/default.json`:
+- `default_net`: Mirrors the base `model` settings.
+- `small_net`: Smaller MLP + smaller embeddings.
+- `wide_net`: Wider MLP with fewer layers.
+- `large_net`: Wider + deeper MLP with larger embeddings.
+
 ## Settings reference
 
 ### project
@@ -72,7 +78,14 @@ Example:
 - `model.embed_dim`: Condition embedding dimension.
 - `model.cat_embed_dim`: Categorical embedding dimension
   (defaults to `embed_dim` if absent).
-- `model.dropout`: Dropout probability in the MLP.
+- `model.activation`: Hidden-layer activation (`relu`, `gelu`, `silu`,
+  `tanh`, `leaky_relu`, `elu`, `selu`, `sigmoid`, or `none`). Supports a
+  list (length must match `hidden_sizes`) to set per-layer activations.
+- `model.norm`: Optional normalization per hidden layer (`batch_norm` or
+  `layer_norm`). Supports a list (length must match `hidden_sizes`) to
+  set per-layer norms.
+- `model.dropout`: Dropout probability in the MLP. Can be a list (length
+  must match `hidden_sizes`) to set per-layer dropouts.
 
 ### data
 - `data.source`: `ctr` or `synthetic`.

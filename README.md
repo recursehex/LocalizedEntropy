@@ -39,7 +39,7 @@ The notebook stays small and delegates everything to the modules in `localized_e
 - `data.source`: `"ctr"` or `"synthetic"`.
 - `ctr` section: file paths, numeric feature columns, condition column, top-k filtering, and preprocessing flags.
 - `synthetic` section: number of conditions, sample counts, parameter ranges, and `num_numeric_features` (2-25 supported).
-- `model`: hidden sizes, embedding dimension, dropout.
+- `model`: hidden sizes, embedding dimension, activation/norm, dropout.
 - `training`: epochs, learning rate, batch size, loss mode, and loss comparisons.
 - `plots`: toggles for every chart and summary table.
 - `evaluation`: bins/thresholds for BCE + calibration summaries (including small-probability calibration, aka ECE computed only on low-probability predictions).

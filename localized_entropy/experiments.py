@@ -32,8 +32,14 @@ def build_model(cfg: dict, splits, device: torch.device) -> ConditionProbNet:
     model_cfg = cfg["model"]
     hidden_sizes = model_cfg.get("hidden_sizes")
     if hidden_sizes is not None:
-        hidden_sizes = tuple(int(v) for v in hidden_sizes)
+        if isinstance(hidden_sizes, (int, float)):
+            hidden_sizes = (int(hidden_sizes),)
+        else:
+            hidden_sizes = tuple(int(v) for v in hidden_sizes)
     cat_embed_dim = model_cfg.get("cat_embed_dim", model_cfg.get("embed_dim", 16))
+    activation = model_cfg.get("activation", "relu")
+    norm = model_cfg.get("norm")
+    dropout = model_cfg.get("dropout", 0.3)
     model = ConditionProbNet(
         num_conditions=int(splits.num_conditions),
         num_numeric=int(splits.x_train.shape[1]),
@@ -41,7 +47,9 @@ def build_model(cfg: dict, splits, device: torch.device) -> ConditionProbNet:
         cat_dims=splits.cat_sizes,
         cat_embed_dim=cat_embed_dim,
         hidden_sizes=hidden_sizes,
-        p_drop=float(model_cfg.get("dropout", 0.3)),
+        p_drop=dropout,
+        activation=activation,
+        norm=norm,
     )
     return model.to(device)
 

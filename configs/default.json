@@ -3,7 +3,7 @@
     "seed": 42
   },
   "experiment": {
-    "active": "bce_baseline",
+    "active": "default_net",
     "overrides": {},
     "definitions": {
       "baseline": {},
@@ -12,10 +12,27 @@
           "loss_mode": "both"
         }
       },
+      "default_net": {
+        "training": {
+          "loss_mode": "both"
+        },
+        "model": {
+          "hidden_sizes": [
+            256,
+            256,
+            128,
+            64
+          ],
+          "embed_dim": 16,
+          "cat_embed_dim": 8,
+          "activation": "relu",
+          "norm": null,
+          "dropout": 0.3
+        }
+      },
       "small_net": {
         "training": {
-          "epochs": 8,
-          "batch_size": 10000
+          "loss_mode": "both"
         },
         "model": {
           "hidden_sizes": [
@@ -24,6 +41,43 @@
           ],
           "embed_dim": 8,
           "dropout": 0.2
+        }
+      },
+      "wide_net": {
+        "training": {
+          "loss_mode": "both"
+        },
+        "model": {
+          "hidden_sizes": [
+            512,
+            512,
+            256
+          ],
+          "embed_dim": 16,
+          "cat_embed_dim": 8,
+          "activation": "relu",
+          "norm": null,
+          "dropout": 0.3
+        }
+      },
+      "large_net": {
+        "training": {
+          "loss_mode": "both"
+        },
+        "model": {
+          "hidden_sizes": [
+            512,
+            512,
+            256,
+            256,
+            128,
+            64
+          ],
+          "embed_dim": 32,
+          "cat_embed_dim": 16,
+          "activation": "relu",
+          "norm": null,
+          "dropout": 0.35
         }
       }
     }
@@ -53,6 +107,8 @@
     ],
     "embed_dim": 16,
     "cat_embed_dim": 8,
+    "activation": "relu",
+    "norm": null,
     "dropout": 0.3
   },
   "data": {

@@ -58,7 +58,9 @@ Step-by-step pipeline:
 - `localized_entropy/models.py` defines `ConditionProbNet`:
   - Condition embedding.
   - Optional categorical embeddings.
-  - Feed-forward MLP to a single logit.
+  - Feed-forward MLP to a single logit, with configurable hidden sizes,
+    activation, normalization, and dropout (per-layer settings supported
+    via `configs/default.json`).
 
 6) Initial prediction diagnostics (untrained)
 - One batch is passed through the model to report logit and
