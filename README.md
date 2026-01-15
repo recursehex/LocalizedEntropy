@@ -37,7 +37,7 @@ The notebook stays small and delegates everything to the modules in `localized_e
   - `active` selects an experiment profile.
   - `definitions` holds per-experiment overrides (e.g., `bce_baseline`, `small_net`).
 - `data.source`: `"ctr"` or `"synthetic"`.
-- `ctr` section: file paths, numeric feature columns, condition column, top-k filtering, and preprocessing flags.
+- `ctr` section: file paths, numeric feature columns, condition column, filtering rules, and preprocessing flags.
 - `synthetic` section: number of conditions, sample counts, parameter ranges, and `num_numeric_features` (2-25 supported).
 - `model`: hidden sizes, embedding dimension, activation/norm, dropout.
 - `training`: epochs, learning rate, batch size, loss mode, and loss comparisons.
@@ -50,10 +50,8 @@ The notebook stays small and delegates everything to the modules in `localized_e
 - To change the number of input features:
   - For CTR, edit `ctr.numeric_cols`.
   - For synthetic, edit `synthetic.num_numeric_features` (extra features are Gaussian noise by default).
-- The notebook precomputes top-N ad-id filters (N = `ctr.filter_top_k`) and writes reusable CSVs:
-  - Impressions are read from `results/ad_id_impressions.txt` if present, otherwise computed from `ctr.train_path`.
-  - Outputs: `results/ad_id_impressions.csv`, `data/train_top_{N}.csv`, `data/test_top_{N}.csv`.
-  - If the filtered test set is empty, the notebook keeps the unfiltered test path to avoid empty evaluation.
+- CTR filtering is applied in `localized_entropy/data/ctr.py` via `ctr.filter` (id lists or top/bottom-k by impressions or click rate).
+- If `ctr.filter.cache.enabled` is true, the pipeline writes filtered CSVs to disk before loading to reduce memory use.
 - CTR distribution plots use a sample size from `ctr.plot_sample_size` and toggles in `plots.ctr_data_distributions` and `plots.ctr_label_rates`. Set `plots.ctr_use_density` to `true` if you want density curves instead of counts.
 
 ## Data sources

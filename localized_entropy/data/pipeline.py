@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from localized_entropy.data.common import standardize_features, train_eval_split
-from localized_entropy.data.ctr import build_ctr_arrays, load_ctr_frames
+from localized_entropy.data.ctr import build_ctr_arrays, load_ctr_frames, maybe_cache_filtered_ctr
 from localized_entropy.data.datasets import ConditionDataset, TensorBatchLoader
 from localized_entropy.data.synthetic import build_features, make_dataset
 from localized_entropy.utils import is_notebook
@@ -248,6 +248,7 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
     plot_sample_size = 0
     balance_by_condition = False
     if source == "ctr":
+        maybe_cache_filtered_ctr(cfg["ctr"])
         train_df, test_df, stats_df, top_values = load_ctr_frames(cfg["ctr"])
         arrays = build_ctr_arrays(train_df, test_df, cfg["ctr"])
         xnum = arrays["xnum"]
@@ -268,10 +269,15 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
         balance_by_condition = bool(cfg.get("ctr", {}).get("balance_by_condition", False))
         plot_sample_size = int(cfg["ctr"].get("plot_sample_size", 0) or 0)
         if stats_df is not None:
+            filter_label = (
+                cfg.get("ctr", {}).get("filter", {}).get("col")
+                or cfg.get("ctr", {}).get("filter_col")
+                or cfg.get("ctr", {}).get("condition_col")
+            )
             plot_data["ctr_stats"] = {
                 "stats_df": stats_df,
                 "labels": [str(v) for v in stats_df.index.to_list()],
-                "filter_col": cfg["ctr"].get("filter_col"),
+                "filter_col": filter_label,
             }
     elif source == "synthetic":
         dataset = make_dataset(cfg["synthetic"], seed=seed)

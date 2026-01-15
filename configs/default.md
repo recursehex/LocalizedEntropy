@@ -99,7 +99,7 @@ Example:
 These settings are used when `data.source` is `ctr`.
 
 - `ctr.train_path` / `ctr.test_path`: CSV paths.
-- `ctr.read_rows`: Max rows to read (null/0 = all rows).
+- `ctr.read_rows`: Max rows to read (null/0 = all rows; default null).
 - `ctr.numeric_cols`: Numeric feature columns.
 - `ctr.categorical_cols`: Categorical feature columns.
 - `ctr.categorical_max_values`: Cap per categorical vocab (top-k + other).
@@ -110,11 +110,28 @@ These settings are used when `data.source` is `ctr`.
 - `ctr.label_col`: Label column (binary click).
 - `ctr.weight_col`: Optional weight column (stored as net_worth).
 - `ctr.max_conditions`: Cap condition vocab; others map to a single id.
-- `ctr.filter_col`: Optional filter column for top-k filtering.
-- `ctr.filter_top_k`: Top-k values to keep (0/empty = disabled).
+- `ctr.filter`: Optional filtering block for selecting a subset of values.
+  - `ctr.filter.enabled`: Enable filtering (default true if the block is set).
+  - `ctr.filter.mode`: `ids`, `top_k`, `bottom_k`, or `none`.
+  - `ctr.filter.col`: Column to filter (defaults to `condition_col`).
+- `ctr.filter.ids`: List of values to keep (mode `ids`).
+- `ctr.filter.k`: Number of values to keep (top/bottom-k modes).
+- `ctr.filter.metric`: `count` (impressions) or `mean` (click rate).
+- `ctr.filter.order`: Optional override for sort order (`asc`/`desc`).
+- `ctr.filter.min_count`: Optional min count threshold before ranking.
+- `ctr.filter.apply_to_test`: Apply the same filter to the test set.
+- `ctr.filter.cache`: Optional on-disk cache for filtered CSVs.
+  - `ctr.filter.cache.enabled`: If true, write filtered CSVs before load.
+  - `ctr.filter.cache.train_path`: Output train CSV path.
+  - `ctr.filter.cache.test_path`: Output test CSV path.
+  - `ctr.filter.cache.overwrite`: If true, regenerate cached CSVs.
+  - `ctr.filter.cache.chunksize`: Chunk size for streaming filter pass.
+- `ctr.filter_col`: Legacy top-k filter column (still supported).
+- `ctr.filter_top_k`: Legacy top-k values to keep (0/empty = disabled).
 - `ctr.drop_na`: Drop rows with NA in selected columns.
-- `ctr.plot_filter_stats`: If true, show top-k stats plot.
-- `ctr.filter_test`: Apply filter_top_k to the test set too.
+- `ctr.plot_filter_stats`: If true, show filter stats plot.
+- `ctr.filter_test`: Legacy toggle for applying filters to the test set
+  when `ctr.filter.apply_to_test` is unset.
 - `ctr.test_has_labels`: If true, treat test CSV as labeled.
 - `ctr.plot_sample_size`: Sample size for distribution plots (0 = off).
 - `ctr.balance_by_condition`: If true, downsample training to the
@@ -124,14 +141,50 @@ Example: keep the top 50 ads by impressions and balance the training set:
 
 ```json
 "ctr": {
-  "filter_col": "C14",
-  "filter_top_k": 50,
+  "filter": {
+    "mode": "top_k",
+    "col": "C14",
+    "k": 50,
+    "metric": "count"
+  },
   "balance_by_condition": true
 }
 ```
 
-Note: the notebook also contains a pre-step to cache top-k filtered
-CSVs under `data/` when `filter_col` and `filter_top_k` are set.
+Example: keep the bottom 10 ads by click rate (mean) with at least 1,000
+impressions:
+
+```json
+"ctr": {
+  "filter": {
+    "mode": "bottom_k",
+    "col": "C14",
+    "k": 10,
+    "metric": "mean",
+    "min_count": 1000
+  }
+}
+```
+
+Example: keep a fixed list of ad ids (mirrors the default config):
+
+```json
+"ctr": {
+  "filter": {
+    "mode": "ids",
+    "col": "C14",
+    "ids": [20093, 21768, 21191],
+    "cache": {
+      "enabled": true,
+      "train_path": "data/train_filtered.csv",
+      "test_path": "data/test_filtered.csv"
+    }
+  }
+}
+```
+
+Note: when `ctr.filter.cache.enabled=true`, the data pipeline writes
+filtered CSVs before loading to reduce memory usage.
 
 ### synthetic
 These settings are used when `data.source` is `synthetic`.

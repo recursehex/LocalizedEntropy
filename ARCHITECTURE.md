@@ -20,13 +20,15 @@ Step-by-step pipeline:
   `configs/default.json`.
 - Chooses CUDA vs CPU via `localized_entropy/utils.py`.
 
-2) Optional CTR top-k filtering (notebook-only)
-- If `ctr.filter_col` and `ctr.filter_top_k` are set, the notebook
-  precomputes top-k values, writes filtered CSVs under `data/`, and
-  updates `cfg['ctr']['train_path']`/`cfg['ctr']['test_path']`.
-- It also writes per-value stats under `results/` for inspection.
-- This is separate from the `localized_entropy/data/ctr.py` filtering
-  and is designed to cache a smaller dataset on disk.
+2) Optional CTR filtering + caching (config-driven)
+- `localized_entropy/data/ctr.py` applies `ctr.filter` (or legacy
+  `ctr.filter_col`/`ctr.filter_top_k`) to select a subset of conditions
+  by id list or by top/bottom-k ranking on impressions or click rate.
+- If `ctr.filter.cache.enabled` is true, the pipeline writes filtered
+  CSVs to disk before loading, reducing memory pressure for large
+  datasets.
+- Filter stats are computed from the filtered training data and passed
+  through `plot_ctr_filter_stats` when enabled.
 
 3) Data preparation
 - `localized_entropy/data/pipeline.py` drives the data pipeline.
@@ -122,9 +124,16 @@ Step-by-step pipeline:
 
 CTR source (`localized_entropy/data/ctr.py`):
 - Reads CSV columns from config (`ctr.*`).
+- Optional on-disk cache:
+  - When `ctr.filter.cache.enabled=true`, filtered train/test CSVs are
+    generated in streaming chunks and paths are updated for loading.
 - Optional preprocessing:
   - `derived_time`: extract day-of-week and hour features.
   - `device_counters`: add capped counts for device_ip/device_id.
+- Optional filtering:
+  - Uses `ctr.filter` (or legacy `filter_col`/`filter_top_k`) to keep
+    specific condition ids or top/bottom-k by impressions/click rate.
+  - Optionally applies the same filter to the test set.
 - Encodes:
   - Condition column into integer IDs (with optional top-k mapping).
   - Categorical features with per-column vocab caps.

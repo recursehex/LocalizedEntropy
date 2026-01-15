@@ -119,9 +119,9 @@
     "shuffle_test": true
   },
   "ctr": {
-    "train_path": "data/train_top3.csv",
+    "train_path": "data/train.csv",
     "test_path": "data/test.csv",
-    "read_rows": 10000000,
+    "read_rows": null,
     "numeric_cols": [],
     "categorical_cols": [
       "C1",
@@ -153,6 +153,22 @@
     "label_col": "click",
     "weight_col": null,
     "max_conditions": 50,
+    "filter": {
+      "enabled": true,
+      "mode": "ids",
+      "col": "C14",
+      "ids": [
+        20093,
+        21768,
+        21191
+      ],
+      "cache": {
+        "enabled": true,
+        "train_path": "data/train_filtered.csv",
+        "test_path": "data/test_filtered.csv",
+        "overwrite": false
+      }
+    },
     "filter_col": null,
     "filter_top_k": 0,
     "drop_na": true,

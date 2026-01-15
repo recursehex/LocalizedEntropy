@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -64,6 +65,311 @@ def _add_device_counters(
     )
 
 
+def _normalize_filter_mode(mode: Optional[str]) -> str:
+    if not mode:
+        return ""
+    mode = mode.strip().lower()
+    if mode in ("ids", "id_list", "list", "include"):
+        return "ids"
+    if mode in ("top", "top_k", "highest", "most"):
+        return "top_k"
+    if mode in ("bottom", "bottom_k", "lowest", "least"):
+        return "bottom_k"
+    if mode in ("none", "off", "disabled"):
+        return "none"
+    return mode
+
+
+def _normalize_filter_metric(metric: Optional[str]) -> str:
+    if not metric:
+        return "frequency"
+    metric = metric.strip().lower()
+    if metric in ("count", "frequency", "impressions", "rows"):
+        return "frequency"
+    if metric in ("mean", "avg", "rate", "click_rate", "clickrate"):
+        return "mean"
+    print(f"[WARN] Unknown filter metric '{metric}'; defaulting to frequency.")
+    return "frequency"
+
+
+def _normalize_filter_order(order: Optional[str]) -> Optional[bool]:
+    if not order:
+        return None
+    order = order.strip().lower()
+    if order in ("asc", "ascending", "low", "lowest"):
+        return True
+    if order in ("desc", "descending", "high", "highest"):
+        return False
+    return None
+
+
+def _coerce_filter_values(values: Optional[List], series: pd.Series) -> List:
+    if values is None:
+        return []
+    if not isinstance(values, (list, tuple, set, np.ndarray)):
+        values = [values]
+    values = dedupe(values)
+    if pd.api.types.is_string_dtype(series) or series.dtype == object:
+        return [str(v) for v in values]
+    if pd.api.types.is_integer_dtype(series):
+        coerced = []
+        for v in values:
+            try:
+                coerced.append(int(v))
+            except (TypeError, ValueError):
+                print(f"[WARN] Could not coerce filter value '{v}' to int; skipping.")
+        return coerced
+    if pd.api.types.is_numeric_dtype(series):
+        coerced = []
+        for v in values:
+            try:
+                coerced.append(float(v))
+            except (TypeError, ValueError):
+                print(f"[WARN] Could not coerce filter value '{v}' to float; skipping.")
+        return coerced
+    return values
+
+
+def _build_filter_stats(train_df: pd.DataFrame, filter_col: str, label_col: str) -> pd.DataFrame:
+    return (
+        train_df.groupby(filter_col)[label_col]
+        .agg(
+            frequency="size",
+            mean="mean",
+            std=lambda s: float(np.std(s.to_numpy(), ddof=0)),
+        )
+    )
+
+
+def _sample_series(path: Path, col: str) -> Optional[pd.Series]:
+    try:
+        sample_df = pd.read_csv(path, usecols=[col], nrows=1000)
+    except Exception as exc:
+        print(f"[WARN] Failed to sample {col} from {path}: {exc}")
+        return None
+    if col not in sample_df.columns or sample_df.empty:
+        return None
+    return sample_df[col]
+
+
+def _stream_filter_stats(
+    path: Path,
+    filter_col: str,
+    label_col: str,
+    *,
+    read_rows: Optional[int],
+    chunksize: int,
+) -> pd.DataFrame:
+    counts: Dict = {}
+    sums: Dict = {}
+    for chunk in pd.read_csv(
+        path,
+        usecols=[filter_col, label_col],
+        chunksize=chunksize,
+        nrows=read_rows,
+    ):
+        grouped = chunk.groupby(filter_col)[label_col].agg(["size", "sum"])
+        for idx, row in grouped.iterrows():
+            counts[idx] = counts.get(idx, 0) + int(row["size"])
+            sums[idx] = sums.get(idx, 0.0) + float(row["sum"])
+    if not counts:
+        return pd.DataFrame(columns=["frequency", "mean"])
+    stats_df = pd.DataFrame(
+        {
+            "frequency": pd.Series(counts, dtype="int64"),
+            "sum": pd.Series(sums, dtype="float64"),
+        }
+    )
+    stats_df["mean"] = stats_df["sum"] / stats_df["frequency"].replace(0, np.nan)
+    return stats_df.drop(columns=["sum"])
+
+
+def _filter_csv_to_ids(
+    input_path: Path,
+    output_path: Path,
+    *,
+    filter_col: str,
+    ids: List,
+    read_rows: Optional[int],
+    chunksize: int,
+) -> int:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    wrote = False
+    row_count = 0
+    for chunk in pd.read_csv(input_path, chunksize=chunksize, nrows=read_rows):
+        filtered = chunk[chunk[filter_col].isin(ids)]
+        if filtered.empty:
+            continue
+        row_count += len(filtered)
+        filtered.to_csv(
+            output_path,
+            mode="w" if not wrote else "a",
+            header=not wrote,
+            index=False,
+        )
+        wrote = True
+    if not wrote:
+        pd.read_csv(input_path, nrows=0).to_csv(output_path, index=False)
+    return row_count
+
+
+def maybe_cache_filtered_ctr(ctr_cfg: Dict) -> None:
+    filter_cfg = ctr_cfg.get("filter") or {}
+    cache_cfg = filter_cfg.get("cache") or {}
+    if not cache_cfg.get("enabled", False):
+        return
+
+    legacy_filter_top_k = ctr_cfg.get("filter_top_k")
+    if legacy_filter_top_k is not None:
+        try:
+            legacy_filter_top_k = int(legacy_filter_top_k)
+        except (TypeError, ValueError):
+            legacy_filter_top_k = None
+    if legacy_filter_top_k is not None and legacy_filter_top_k <= 0:
+        legacy_filter_top_k = None
+
+    filter_col = (
+        filter_cfg.get("col")
+        or filter_cfg.get("column")
+        or ctr_cfg.get("filter_col")
+        or ctr_cfg.get("condition_col")
+    )
+    if not filter_col:
+        print("[WARN] Filter cache enabled but filter column is missing.")
+        return
+
+    filter_mode = _normalize_filter_mode(filter_cfg.get("mode"))
+    if not filter_mode:
+        if filter_cfg.get("ids") or filter_cfg.get("values"):
+            filter_mode = "ids"
+        elif filter_cfg.get("k") or filter_cfg.get("top_k") or legacy_filter_top_k:
+            filter_mode = "top_k"
+        else:
+            filter_mode = "none"
+    filter_enabled = filter_cfg.get("enabled")
+    if filter_enabled is None:
+        filter_enabled = filter_mode not in ("", "none")
+    if not filter_enabled or filter_mode == "none":
+        print("[WARN] Filter cache enabled but filter mode is disabled.")
+        return
+
+    read_rows = _safe_nrows(ctr_cfg.get("read_rows"))
+    chunksize = int(cache_cfg.get("chunksize", 1_000_000))
+    label_col = ctr_cfg.get("label_col", "click")
+    train_in = Path(ctr_cfg["train_path"])
+    test_in = Path(ctr_cfg["test_path"])
+
+    selected_ids: List = []
+    if filter_mode == "ids":
+        ids = filter_cfg.get("ids") or filter_cfg.get("values") or []
+        if not ids:
+            print("[WARN] Filter cache enabled but ids list is empty.")
+            return
+        sample_series = _sample_series(train_in, filter_col)
+        if sample_series is not None:
+            ids = _coerce_filter_values(ids, sample_series)
+        selected_ids = dedupe(ids)
+    else:
+        stats_df = _stream_filter_stats(
+            train_in,
+            filter_col,
+            label_col,
+            read_rows=read_rows,
+            chunksize=chunksize,
+        )
+        if stats_df.empty:
+            print("[WARN] Filter cache stats are empty; skipping cache.")
+            return
+        min_count = filter_cfg.get("min_count")
+        if min_count is not None:
+            try:
+                min_count = int(min_count)
+            except (TypeError, ValueError):
+                min_count = None
+        if min_count is not None and min_count > 0:
+            stats_df = stats_df[stats_df["frequency"] >= min_count]
+        if stats_df.empty:
+            print("[WARN] Filter cache stats empty after min_count; skipping cache.")
+            return
+        metric = _normalize_filter_metric(filter_cfg.get("metric"))
+        order_override = _normalize_filter_order(filter_cfg.get("order"))
+        default_ascending = filter_mode == "bottom_k"
+        ascending = order_override if order_override is not None else default_ascending
+        k = filter_cfg.get("k")
+        if k is None and filter_mode == "bottom_k":
+            k = filter_cfg.get("bottom_k")
+        if k is None:
+            k = filter_cfg.get("top_k")
+        if k is None:
+            k = legacy_filter_top_k
+        if k is not None:
+            try:
+                k = int(k)
+            except (TypeError, ValueError):
+                k = None
+        if k is None or k <= 0:
+            print("[WARN] Filter cache enabled but k is missing.")
+            return
+        selected_ids = (
+            stats_df.sort_values(metric, ascending=ascending).head(k).index.to_list()
+        )
+
+    selected_ids = dedupe(selected_ids)
+    if not selected_ids:
+        print("[WARN] Filter cache enabled but no ids selected.")
+        return
+
+    filter_cfg["mode"] = "ids"
+    filter_cfg["ids"] = selected_ids
+    filter_cfg["col"] = filter_col
+    ctr_cfg["filter"] = filter_cfg
+
+    train_out = Path(cache_cfg.get("train_path", "data/train_filtered.csv"))
+    test_out = Path(cache_cfg.get("test_path", "data/test_filtered.csv"))
+    overwrite = bool(cache_cfg.get("overwrite", False))
+
+    if overwrite or not train_out.exists():
+        train_rows = _filter_csv_to_ids(
+            train_in,
+            train_out,
+            filter_col=filter_col,
+            ids=selected_ids,
+            read_rows=read_rows,
+            chunksize=chunksize,
+        )
+    else:
+        train_rows = None
+        print(f"Using cached train file: {train_out}")
+
+    if train_rows == 0:
+        print("[WARN] Cached train filter produced 0 rows; keeping original train_path.")
+    else:
+        ctr_cfg["train_path"] = str(train_out)
+        if train_rows is not None:
+            print(f"Cached filtered train rows: {train_rows:,}")
+
+    apply_to_test = bool(filter_cfg.get("apply_to_test", ctr_cfg.get("filter_test", True)))
+    if apply_to_test:
+        if overwrite or not test_out.exists():
+            test_rows = _filter_csv_to_ids(
+                test_in,
+                test_out,
+                filter_col=filter_col,
+                ids=selected_ids,
+                read_rows=read_rows,
+                chunksize=chunksize,
+            )
+        else:
+            test_rows = None
+            print(f"Using cached test file: {test_out}")
+        if test_rows == 0:
+            print("[WARN] Cached test filter produced 0 rows; keeping original test_path.")
+        else:
+            ctr_cfg["test_path"] = str(test_out)
+            if test_rows is not None:
+                print(f"Cached filtered test rows: {test_rows:,}")
+
+
 def _build_categorical_mapping(series: pd.Series, max_values: Optional[int]) -> Tuple[Dict[str, int], int]:
     series = series.astype(str)
     counts = series.value_counts()
@@ -86,11 +392,40 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
     condition_col = cfg["condition_col"]
     numeric_cols = cfg["numeric_cols"]
     categorical_cols = cfg.get("categorical_cols", []) or []
-    filter_col = cfg.get("filter_col")
     weight_col = cfg.get("weight_col")
     derived_time = bool(cfg.get("derived_time", False))
     device_counters = bool(cfg.get("device_counters", False))
     test_has_labels = bool(cfg.get("test_has_labels", False))
+
+    filter_cfg = cfg.get("filter") or {}
+    legacy_filter_col = cfg.get("filter_col")
+    legacy_filter_top_k = cfg.get("filter_top_k")
+    if legacy_filter_top_k is not None:
+        try:
+            legacy_filter_top_k = int(legacy_filter_top_k)
+        except (TypeError, ValueError):
+            legacy_filter_top_k = None
+    if legacy_filter_top_k is not None and legacy_filter_top_k <= 0:
+        legacy_filter_top_k = None
+
+    filter_col = filter_cfg.get("col") or filter_cfg.get("column") or legacy_filter_col
+    if filter_col is None and filter_cfg:
+        filter_col = condition_col
+
+    filter_mode = _normalize_filter_mode(filter_cfg.get("mode"))
+    if not filter_mode:
+        if filter_cfg.get("ids") or filter_cfg.get("values"):
+            filter_mode = "ids"
+        elif filter_cfg.get("k") or filter_cfg.get("top_k") or legacy_filter_top_k:
+            filter_mode = "top_k"
+        else:
+            filter_mode = "none"
+
+    filter_enabled = filter_cfg.get("enabled")
+    if filter_enabled is None:
+        filter_enabled = filter_mode not in ("", "none") and filter_col is not None
+    if not filter_enabled:
+        filter_mode = "none"
 
     filter_cols = [filter_col] if filter_col else []
     extra_cols: List[str] = []
@@ -135,30 +470,77 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
 
     stats_df = None
     top_values = None
-    filter_top_k = cfg.get("filter_top_k")
-    filter_test = bool(cfg.get("filter_test", True))
-    if filter_col and filter_top_k:
-        top_counts = train_df[filter_col].value_counts()
-        top_values = top_counts.head(int(filter_top_k)).index.to_list()
-        print(f"Filtering to top {filter_top_k} values of {filter_col}: {top_values}")
-        train_df = train_df[train_df[filter_col].isin(top_values)].copy()
-        if filter_test:
-            test_unfiltered = test_df
-            test_df = test_df[test_df[filter_col].isin(top_values)].copy()
-            if len(test_df) == 0 and len(test_unfiltered) > 0:
-                print("[WARN] Filtered test set is empty; keeping unfiltered test rows.")
-                test_df = test_unfiltered
-        print(f"Filtered Train rows: {len(train_df):,} | Filtered Test rows: {len(test_df):,}")
+    filter_test = bool(filter_cfg.get("apply_to_test", cfg.get("filter_test", True)))
+    if filter_mode != "none" and filter_col:
+        selected_values = []
+        selected_stats = None
+        if filter_mode == "ids":
+            ids = filter_cfg.get("ids") or filter_cfg.get("values") or []
+            selected_values = _coerce_filter_values(ids, train_df[filter_col])
+        else:
+            metric = _normalize_filter_metric(filter_cfg.get("metric"))
+            min_count = filter_cfg.get("min_count")
+            if min_count is not None:
+                try:
+                    min_count = int(min_count)
+                except (TypeError, ValueError):
+                    min_count = None
+            order_override = _normalize_filter_order(filter_cfg.get("order"))
+            if filter_mode == "bottom_k":
+                default_ascending = True
+            else:
+                default_ascending = False
+            ascending = order_override if order_override is not None else default_ascending
+            k = filter_cfg.get("k")
+            if k is None:
+                if filter_mode == "bottom_k":
+                    k = filter_cfg.get("bottom_k")
+            if k is None:
+                k = filter_cfg.get("top_k")
+            if k is None:
+                k = legacy_filter_top_k
+            if k is not None:
+                try:
+                    k = int(k)
+                except (TypeError, ValueError):
+                    k = None
+            if k is None or k <= 0:
+                print("[WARN] Filter configured but k is missing; skipping filter.")
+            else:
+                stats_all = _build_filter_stats(train_df, filter_col, label_col)
+                if min_count is not None and min_count > 0:
+                    stats_all = stats_all[stats_all["frequency"] >= min_count]
+                if stats_all.empty:
+                    print("[WARN] Filter stats are empty; skipping filter.")
+                else:
+                    stats_sorted = stats_all.sort_values(metric, ascending=ascending)
+                    selected_stats = stats_sorted.head(k)
+                    selected_values = selected_stats.index.to_list()
 
-        stats_df = (
-            train_df.groupby(filter_col)[label_col]
-            .agg(
-                frequency="size",
-                mean="mean",
-                std=lambda s: float(np.std(s.to_numpy(), ddof=0)),
-            )
-            .reindex(top_values)
-        )
+        selected_values = dedupe(selected_values)
+        if selected_values:
+            filter_label = f"{filter_mode} {len(selected_values)} values of {filter_col}"
+            print(f"Filtering to {filter_label}: {selected_values}")
+            train_df = train_df[train_df[filter_col].isin(selected_values)].copy()
+            present = set(train_df[filter_col].unique())
+            missing = [v for v in selected_values if v not in present]
+            if missing:
+                print(f"[WARN] Missing {len(missing)} filter values in training data: {missing}")
+                selected_values = [v for v in selected_values if v in present]
+            if filter_test:
+                test_unfiltered = test_df
+                test_df = test_df[test_df[filter_col].isin(selected_values)].copy()
+                if len(test_df) == 0 and len(test_unfiltered) > 0:
+                    print("[WARN] Filtered test set is empty; keeping unfiltered test rows.")
+                    test_df = test_unfiltered
+            print(f"Filtered Train rows: {len(train_df):,} | Filtered Test rows: {len(test_df):,}")
+            if selected_stats is None:
+                stats_df = _build_filter_stats(train_df, filter_col, label_col).reindex(selected_values)
+            else:
+                stats_df = selected_stats.reindex(selected_values)
+            top_values = selected_values
+        else:
+            print("[WARN] Filter configured but no values selected; skipping filter.")
 
     return train_df, test_df, stats_df, top_values
 

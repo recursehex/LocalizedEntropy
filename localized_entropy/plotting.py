@@ -257,7 +257,7 @@ def plot_le_stats_per_condition(stats: dict, title: str = "Localized Entropy ter
 def plot_ctr_filter_stats(stats_df, labels, filter_col: str) -> None:
     if stats_df is None:
         return
-    print("Top-filter stats (click):")
+    print("Filter stats (click):")
     print(stats_df.to_string())
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
     axes[0].bar(labels, stats_df["frequency"], color="#4477aa")
