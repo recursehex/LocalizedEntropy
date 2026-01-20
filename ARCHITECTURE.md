@@ -79,6 +79,8 @@ Step-by-step pipeline:
   - BCE (`torch.nn.BCEWithLogitsLoss`).
 - For LE, a streaming per-condition base rate is updated each batch.
 - Optional mid-epoch eval callbacks can plot prediction histograms.
+- When `plots.grad_sq_by_condition=true`, the loop also accumulates
+  per-condition sum of squared logits gradients for BCE vs LE.
 - If `training.loss_mode` is set to `both`, the notebook trains BCE and
   LE sequentially and stores results for comparison.
 
@@ -141,6 +143,8 @@ CTR source (`localized_entropy/data/ctr.py`):
   - Numeric feature matrix `xnum`.
   - Categorical feature matrix `xcat`.
   - Labels, conditions, and optional test labels.
+  - `num_conditions` set from the max encoded condition across train/test
+    (unused "other" buckets are trimmed).
 
 Synthetic source (`localized_entropy/data/synthetic.py`):
 - Generates net-worth and age distributions per condition.

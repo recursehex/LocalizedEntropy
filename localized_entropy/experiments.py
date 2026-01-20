@@ -26,6 +26,7 @@ class TrainRunResult:
     eval_logits: Optional[torch.Tensor]
     eval_targets: Optional[torch.Tensor]
     eval_conds: Optional[torch.Tensor]
+    grad_sq_sum_per_condition: Optional[np.ndarray]
 
 
 def build_model(cfg: dict, splits, device: torch.device) -> ConditionProbNet:
@@ -152,8 +153,9 @@ def train_single_loss(
     eval_every_n_batches: Optional[int] = None,
     eval_batch_callback: Optional[Callable[[np.ndarray, int, int], None]] = None,
     collect_eval_logits: bool = False,
+    collect_grad_sq_sums: bool = False,
 ) -> TrainRunResult:
-    train_losses, eval_losses = train_with_epoch_plots(
+    train_losses, eval_losses, grad_sq_sums = train_with_epoch_plots(
         model=model,
         train_loader=train_loader,
         val_loader=train_eval_loader,
@@ -166,6 +168,7 @@ def train_single_loss(
         eval_callback=eval_callback,
         eval_every_n_batches=eval_every_n_batches,
         eval_batch_callback=eval_batch_callback,
+        track_grad_sq_sums=collect_grad_sq_sums,
     )
     eval_loss, eval_preds = evaluate_or_predict(
         model,
@@ -191,6 +194,7 @@ def train_single_loss(
         eval_logits=eval_logits,
         eval_targets=eval_targets,
         eval_conds=eval_conds,
+        grad_sq_sum_per_condition=grad_sq_sums,
     )
 
 

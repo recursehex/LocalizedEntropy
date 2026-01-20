@@ -134,7 +134,8 @@ def train_with_epoch_plots(
     eval_callback: Optional[Callable[[np.ndarray, int], None]] = None,
     eval_every_n_batches: Optional[int] = None,
     eval_batch_callback: Optional[Callable[[np.ndarray, int, int], None]] = None,
-) -> Tuple[List[float], List[float]]:
+    track_grad_sq_sums: bool = False,
+) -> Tuple[List[float], List[float], Optional[np.ndarray]]:
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     train_losses: List[float] = []
     val_losses: List[float] = []
@@ -142,6 +143,14 @@ def train_with_epoch_plots(
     bce_loss = nn.BCEWithLogitsLoss()
     loss_label = "LE" if loss_mode == "localized_entropy" else "BCE"
     use_le = loss_mode == "localized_entropy"
+    grad_sq_sums = None
+    if track_grad_sq_sums:
+        emb_layer = getattr(model, "embedding", None)
+        if isinstance(emb_layer, nn.Embedding):
+            num_conds = int(emb_layer.num_embeddings)
+        else:
+            raise ValueError("Gradient tracking requires a model with an embedding layer.")
+        grad_sq_sums = torch.zeros(num_conds, dtype=torch.float64, device=device)
     if device.type == "cuda":
         first_param = next(model.parameters(), None)
         if (first_param is not None) and (first_param.device.type != "cuda"):
@@ -178,6 +187,8 @@ def train_with_epoch_plots(
                 verified_cuda_batch = True
             opt.zero_grad(set_to_none=True)
             logits = model(x, x_cat, c)
+            if grad_sq_sums is not None:
+                logits.retain_grad()
             if use_le:
                 br_tracker.update(y, c)
                 loss = localized_entropy(
@@ -197,6 +208,20 @@ def train_with_epoch_plots(
             else:
                 raise ValueError(f"Unsupported loss_mode: {loss_mode}")
             loss.backward()
+            if grad_sq_sums is not None:
+                grad = logits.grad
+                if grad is None:
+                    raise RuntimeError("Expected logits gradients for grad tracking.")
+                grad_sq = grad.detach().view(-1).to(torch.float64)
+                c_flat = c.view(-1).to(torch.long)
+                if grad_sq.numel() != c_flat.numel():
+                    raise RuntimeError("Logits gradient size does not match conditions.")
+                grad_sq = grad_sq * grad_sq
+                grad_sq_sums += torch.bincount(
+                    c_flat,
+                    weights=grad_sq,
+                    minlength=grad_sq_sums.numel(),
+                )
             opt.step()
             running += float(loss.item()) * x.size(0)
             count += x.size(0)
@@ -246,4 +271,5 @@ def train_with_epoch_plots(
 
     print(f"Final Train {loss_label}: {train_losses[-1]:.10f}")
     print(f"Final Eval  {loss_label}: {val_losses[-1]:.10f}")
-    return train_losses, val_losses
+    grad_sq_sums_np = grad_sq_sums.detach().cpu().numpy() if grad_sq_sums is not None else None
+    return train_losses, val_losses, grad_sq_sums_np

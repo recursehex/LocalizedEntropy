@@ -229,6 +229,9 @@
       0
     ],
     "le_stats": true,
+    "grad_sq_by_condition": true,
+    "grad_sq_top_k": 0,
+    "grad_sq_log10": true,
     "print_eval_summary": true,
     "print_le_stats_table": true,
     "ctr_data_distributions": true,

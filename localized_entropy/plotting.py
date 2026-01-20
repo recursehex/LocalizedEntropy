@@ -254,6 +254,72 @@ def plot_le_stats_per_condition(stats: dict, title: str = "Localized Entropy ter
     plt.show()
 
 
+def plot_grad_sq_sums_by_condition(
+    bce_sums: Optional[np.ndarray],
+    le_sums: Optional[np.ndarray],
+    *,
+    condition_label: str,
+    title: str = "Gradient sum of squares per condition",
+    top_k: int = 0,
+    log10: bool = True,
+) -> None:
+    if bce_sums is None and le_sums is None:
+        print("[WARN] No gradient stats available; skipping grad plot.")
+        return
+    bce_vals = np.asarray(bce_sums, dtype=np.float64).reshape(-1) if bce_sums is not None else None
+    le_vals = np.asarray(le_sums, dtype=np.float64).reshape(-1) if le_sums is not None else None
+    if (bce_vals is not None) and (le_vals is not None) and (bce_vals.size != le_vals.size):
+        print("[WARN] Grad sum arrays have different sizes; skipping grad plot.")
+        return
+    num_conditions = int(bce_vals.size if bce_vals is not None else le_vals.size)
+    cond_ids = np.arange(num_conditions)
+    top_k = int(top_k)
+    if top_k > 0 and top_k < num_conditions:
+        if bce_vals is not None and le_vals is not None:
+            scores = np.maximum(bce_vals, le_vals)
+        else:
+            scores = bce_vals if bce_vals is not None else le_vals
+        order = np.argsort(scores)[::-1][:top_k]
+        cond_ids = cond_ids[order]
+        if bce_vals is not None:
+            bce_vals = bce_vals[order]
+        if le_vals is not None:
+            le_vals = le_vals[order]
+
+    def _transform(vals: np.ndarray) -> np.ndarray:
+        if not log10:
+            return vals
+        eps = 1e-12
+        return np.log10(np.clip(vals, eps, None))
+
+    bce_plot = _transform(bce_vals) if bce_vals is not None else None
+    le_plot = _transform(le_vals) if le_vals is not None else None
+    fig, ax = plt.subplots(1, 1, figsize=(12, 4))
+    x = np.arange(len(cond_ids))
+    if bce_plot is not None and le_plot is not None:
+        width = 0.4
+        ax.bar(x - width / 2, bce_plot, width=width, label="BCE", color="#4477aa")
+        ax.bar(x + width / 2, le_plot, width=width, label="LE", color="#66c2a5")
+        ax.legend()
+    else:
+        label = "BCE" if bce_plot is not None else "LE"
+        vals = bce_plot if bce_plot is not None else le_plot
+        color = "#4477aa" if bce_plot is not None else "#66c2a5"
+        ax.bar(x, vals, color=color, label=label)
+        ax.legend()
+    ax.set_title(title)
+    ax.set_xlabel(condition_label)
+    y_label = "log10(sum grad^2)" if log10 else "sum grad^2"
+    ax.set_ylabel(y_label)
+    if len(cond_ids) > 20:
+        ax.set_xticks(x, cond_ids, rotation=90)
+    else:
+        ax.set_xticks(x, cond_ids)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    plt.show()
+
+
 def plot_ctr_filter_stats(stats_df, labels, filter_col: str) -> None:
     if stats_df is None:
         return

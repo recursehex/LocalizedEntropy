@@ -562,6 +562,11 @@ def build_ctr_arrays(train_df: pd.DataFrame, test_df: pd.DataFrame, cfg: Dict) -
     )
     conds = encode_conditions(train_df[condition_col], cond_map, other_id)
     conds_test = encode_conditions(test_df[condition_col], cond_map, other_id)
+    max_cond = int(conds.max()) if conds.size > 0 else -1
+    if conds_test.size > 0:
+        max_cond = max(max_cond, int(conds_test.max()))
+    if max_cond >= 0:
+        num_conditions = max_cond + 1
 
     if device_counters:
         for col in ("device_ip_count", "device_id_count"):

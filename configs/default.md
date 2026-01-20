@@ -224,6 +224,11 @@ Example: small synthetic dataset with 4 conditions and 3 features:
 - `plots.eval_pred_by_condition`: Plot per-condition predictions.
 - `plots.eval_pred_value_range`: Log10(p) plot range as [min, max].
 - `plots.le_stats`: Plot LE numerator/denominator stats per condition.
+- `plots.grad_sq_by_condition`: Track and plot per-condition gradient
+  sum-of-squares for BCE vs LE during training.
+- `plots.grad_sq_top_k`: If > 0, plot only the top-k conditions by
+  gradient sum (0 = all).
+- `plots.grad_sq_log10`: If true, plot log10 of gradient sums.
 - `plots.print_eval_summary`: Print eval prediction summary.
 - `plots.print_le_stats_table`: Print LE stats table.
 - `plots.ctr_data_distributions`: Enable CTR feature plots.
