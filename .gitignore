@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
 data/
+output/
 !localized_entropy/data/
 !localized_entropy/data/**
 localized_entropy/data/**/__pycache__/

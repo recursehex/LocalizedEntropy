@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,6 +19,7 @@ def _density_lines(
     title: str = "",
     x_label: str = "",
     density: bool = True,
+    output_path: Optional[Union[str, Path]] = None,
 ) -> None:
     vals = values.astype(np.float64).copy()
     if transform == "log10":
@@ -49,6 +50,10 @@ def _density_lines(
     plt.grid(True, alpha=0.3)
     plt.legend(ncol=2, fontsize=8)
     plt.tight_layout()
+    if output_path:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(out_path, dpi=200)
     plt.show()
 
 
@@ -102,7 +107,13 @@ def plot_eval_log10p_hist(preds: np.ndarray, epoch: int, bins: int = 100, *, nam
     plt.show()
 
 
-def plot_loss_curves(train_losses, eval_losses, loss_label: str) -> None:
+def plot_loss_curves(
+    train_losses,
+    eval_losses,
+    loss_label: str,
+    *,
+    output_path: Optional[Union[str, Path]] = None,
+) -> None:
     plt.figure(figsize=(8, 5))
     plt.plot(train_losses, label=f"Train {loss_label}")
     plt.plot(eval_losses, label=f"Eval {loss_label}")
@@ -112,6 +123,10 @@ def plot_loss_curves(train_losses, eval_losses, loss_label: str) -> None:
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
+    if output_path:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(out_path, dpi=200)
     plt.show()
 
 
@@ -124,6 +139,7 @@ def plot_eval_predictions_by_condition(
     title: Optional[str] = None,
     print_counts: bool = True,
     value_range: Tuple[float, float] = (-12, 0),
+    output_path: Optional[Union[str, Path]] = None,
 ) -> None:
     if title is None:
         title = f"{name} Predictions: Distribution by Condition (log10(pred probability))"
@@ -146,6 +162,7 @@ def plot_eval_predictions_by_condition(
         value_range=value_range,
         title=title,
         x_label="log10(pred p)",
+        output_path=output_path,
     )
 
 
@@ -353,6 +370,7 @@ def plot_pred_to_train_rate(
     *,
     condition_label: str,
     eval_name: str,
+    output_path: Optional[Union[str, Path]] = None,
 ) -> None:
     if plot_df is None or len(plot_df) == 0:
         print("[WARN] Plot data unavailable; skipping pred/train ratio chart.")
@@ -370,6 +388,10 @@ def plot_pred_to_train_rate(
     ax.set_xlabel(condition_label)
     ax.set_ylabel("Prediction / Train Click Rate")
     ax.grid(True, alpha=0.3)
+    if output_path:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path, dpi=200)
     plt.show()
 
 

@@ -178,8 +178,11 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
   - Per-condition LE diagnostics.
   - Per-condition F1 log10 histogram.
   - Table plots for BCE vs LE per-condition comparisons.
-- Outputs are shown inline in the notebook and optionally saved by
-  ad-hoc scripts under `results/`.
+- Outputs are shown inline in the notebook, and `localized_entropy.ipynb`
+  now saves key plots plus text logs under `output/` via
+  `localized_entropy/outputs.py`.
+- Output folder structure: `output/{bce|le}/{ctr|synthetic}/{nn_type}/{filter_mode}/`
+  with `avg.png`, `loss.png`, `preds.png`, and `notebook_output.txt`.
 
 ## Key entry points
 
