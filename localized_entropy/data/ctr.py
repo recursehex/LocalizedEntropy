@@ -9,6 +9,7 @@ from localized_entropy.data.common import build_condition_encoder, encode_condit
 
 
 def _safe_nrows(read_rows: Optional[int]):
+    """Normalize a row-limit parameter for pandas reads."""
     if read_rows is None:
         return None
     read_rows = int(read_rows)
@@ -16,6 +17,7 @@ def _safe_nrows(read_rows: Optional[int]):
 
 
 def _extract_hour_parts(series: pd.Series) -> Tuple[pd.Series, pd.Series]:
+    """Split hour column into date and hour substrings."""
     hour_str = series.astype(str).str.zfill(8)
     date_str = hour_str.str.slice(0, 6)
     hh_str = hour_str.str.slice(6, 8)
@@ -23,6 +25,7 @@ def _extract_hour_parts(series: pd.Series) -> Tuple[pd.Series, pd.Series]:
 
 
 def _add_derived_time_features(df: pd.DataFrame, hour_col: str = "hour") -> None:
+    """Add day-of-week and hour features derived from a time column."""
     if hour_col not in df.columns:
         return
     # Split hour into hour-of-day and day-of-week categorical features.
@@ -35,6 +38,7 @@ def _add_derived_time_features(df: pd.DataFrame, hour_col: str = "hour") -> None
 
 
 def _cap_counts(series: pd.Series, cap: Optional[int]) -> pd.Series:
+    """Cap count features at a maximum value."""
     if cap is None or cap <= 0:
         return series
     return series.clip(upper=cap)
@@ -48,6 +52,7 @@ def _add_device_counters(
     device_id_col: str = "device_id",
     cap: Optional[int] = 8,
 ) -> None:
+    """Add device_id/device_ip count features using train-set frequencies."""
     if device_ip_col not in train_df.columns or device_id_col not in train_df.columns:
         return
     # Count device IDs in train and apply the same counts to test for consistency.
@@ -68,6 +73,7 @@ def _add_device_counters(
 
 
 def _normalize_filter_mode(mode: Optional[str]) -> str:
+    """Normalize filter mode values to a canonical token."""
     if not mode:
         return ""
     mode = mode.strip().lower()
@@ -83,6 +89,7 @@ def _normalize_filter_mode(mode: Optional[str]) -> str:
 
 
 def _normalize_filter_metric(metric: Optional[str]) -> str:
+    """Normalize filter metric values to a canonical token."""
     if not metric:
         return "frequency"
     metric = metric.strip().lower()
@@ -95,6 +102,7 @@ def _normalize_filter_metric(metric: Optional[str]) -> str:
 
 
 def _normalize_filter_order(order: Optional[str]) -> Optional[bool]:
+    """Normalize filter sort order to True/False/None."""
     if not order:
         return None
     order = order.strip().lower()
@@ -106,6 +114,7 @@ def _normalize_filter_order(order: Optional[str]) -> Optional[bool]:
 
 
 def _coerce_filter_values(values: Optional[List], series: pd.Series) -> List:
+    """Coerce filter values to the series dtype when possible."""
     if values is None:
         return []
     if not isinstance(values, (list, tuple, set, np.ndarray)):
@@ -133,6 +142,7 @@ def _coerce_filter_values(values: Optional[List], series: pd.Series) -> List:
 
 
 def _build_filter_stats(train_df: pd.DataFrame, filter_col: str, label_col: str) -> pd.DataFrame:
+    """Compute frequency/mean/std for a filter column."""
     return (
         train_df.groupby(filter_col)[label_col]
         .agg(
@@ -144,6 +154,7 @@ def _build_filter_stats(train_df: pd.DataFrame, filter_col: str, label_col: str)
 
 
 def _sample_series(path: Path, col: str) -> Optional[pd.Series]:
+    """Sample a single column from a CSV for type inference."""
     try:
         sample_df = pd.read_csv(path, usecols=[col], nrows=1000)
     except Exception as exc:
@@ -162,6 +173,7 @@ def _stream_filter_stats(
     read_rows: Optional[int],
     chunksize: int,
 ) -> pd.DataFrame:
+    """Stream a CSV to compute filter stats without loading full data."""
     counts: Dict = {}
     sums: Dict = {}
     for chunk in pd.read_csv(
@@ -195,6 +207,7 @@ def _filter_csv_to_ids(
     read_rows: Optional[int],
     chunksize: int,
 ) -> int:
+    """Write a filtered CSV containing only selected IDs."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wrote = False
     row_count = 0
@@ -216,6 +229,7 @@ def _filter_csv_to_ids(
 
 
 def maybe_cache_filtered_ctr(ctr_cfg: Dict) -> None:
+    """Optionally cache filtered CTR CSVs to disk based on config."""
     filter_cfg = ctr_cfg.get("filter") or {}
     cache_cfg = filter_cfg.get("cache") or {}
     if not cache_cfg.get("enabled", False):
@@ -373,6 +387,7 @@ def maybe_cache_filtered_ctr(ctr_cfg: Dict) -> None:
 
 
 def _build_categorical_mapping(series: pd.Series, max_values: Optional[int]) -> Tuple[Dict[str, int], int]:
+    """Build a categorical value-to-ID mapping with an 'other' bucket."""
     series = series.astype(str)
     counts = series.value_counts()
     if (max_values is not None) and (max_values > 0):
@@ -385,11 +400,13 @@ def _build_categorical_mapping(series: pd.Series, max_values: Optional[int]) -> 
 
 
 def _encode_categorical(series: pd.Series, mapping: Dict[str, int], other_id: int) -> np.ndarray:
+    """Encode categorical values into integer IDs."""
     series = series.astype(str)
     return series.map(mapping).fillna(other_id).astype(np.int64).to_numpy()
 
 
 def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.DataFrame], Optional[list]]:
+    """Load CTR train/test frames and apply optional filtering/features."""
     label_col = cfg.get("label_col", "click")
     condition_col = cfg["condition_col"]
     numeric_cols = cfg["numeric_cols"]
@@ -548,6 +565,7 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
 
 
 def build_ctr_arrays(train_df: pd.DataFrame, test_df: pd.DataFrame, cfg: Dict) -> Dict:
+    """Build numeric/categorical arrays and metadata from CTR frames."""
     label_col = cfg.get("label_col", "click")
     condition_col = cfg["condition_col"]
     numeric_cols = list(cfg["numeric_cols"])

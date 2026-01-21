@@ -7,6 +7,7 @@ from localized_entropy.losses import localized_entropy
 
 
 def test_localized_entropy_known_value_balanced():
+    """Validate LE loss on a balanced toy example."""
     logits = torch.zeros(4, dtype=torch.float64)
     targets = torch.tensor([1.0, 0.0, 1.0, 0.0], dtype=torch.float64)
     conds = torch.tensor([0, 0, 1, 1], dtype=torch.long)
@@ -18,6 +19,7 @@ def test_localized_entropy_known_value_balanced():
 
 
 def test_localized_entropy_base_rates_override():
+    """Validate LE loss when base rates are provided explicitly."""
     logits = torch.zeros(4, dtype=torch.float64)
     targets = torch.tensor([1.0, 0.0, 1.0, 0.0], dtype=torch.float64)
     conds = torch.tensor([0, 0, 1, 1], dtype=torch.long)
@@ -35,6 +37,7 @@ def test_localized_entropy_base_rates_override():
 
 
 def test_localized_entropy_single_condition_scales_bce():
+    """Validate LE loss scales BCE when only one condition exists."""
     logits = torch.tensor([0.3, -0.7, 1.2, -1.5], dtype=torch.float64)
     targets = torch.tensor([1.0, 0.0, 1.0, 0.0], dtype=torch.float64)
     conds = torch.zeros_like(targets, dtype=torch.long)
@@ -52,6 +55,7 @@ def test_localized_entropy_single_condition_scales_bce():
 
 
 def test_localized_entropy_condition_weights_scale_terms():
+    """Validate per-condition weights scale LE terms."""
     logits = torch.zeros(4, dtype=torch.float64)
     targets = torch.tensor([1.0, 0.0, 1.0, 0.0], dtype=torch.float64)
     conds = torch.tensor([0, 0, 1, 1], dtype=torch.long)
@@ -64,6 +68,7 @@ def test_localized_entropy_condition_weights_scale_terms():
 
 
 def test_localized_entropy_extreme_logits_are_finite():
+    """Ensure extreme logits produce a finite LE loss."""
     logits = torch.tensor([1000.0, -1000.0, 1000.0, -1000.0], dtype=torch.float64)
     targets = torch.tensor([0.0, 0.0, 1.0, 1.0], dtype=torch.float64)
     conds = torch.tensor([0, 0, 1, 1], dtype=torch.long)
@@ -74,6 +79,7 @@ def test_localized_entropy_extreme_logits_are_finite():
 
 
 def test_localized_entropy_grad_signs():
+    """Check gradient signs for positive/negative logits."""
     logits = torch.tensor([2.0, -2.0], dtype=torch.float64, requires_grad=True)
     targets = torch.tensor([0.0, 1.0], dtype=torch.float64)
     conds = torch.tensor([0, 1], dtype=torch.long)
@@ -89,11 +95,13 @@ def test_localized_entropy_grad_signs():
 
 
 def test_localized_entropy_gradcheck():
+    """Run autograd gradcheck for LE loss."""
     logits = torch.tensor([0.25, -0.35, 0.5, -0.75], dtype=torch.float64, requires_grad=True)
     targets = torch.tensor([1.0, 0.0, 1.0, 0.0], dtype=torch.float64)
     conds = torch.tensor([0, 0, 1, 1], dtype=torch.long)
 
     def loss_fn(z):
+        """Helper closure for gradcheck."""
         return localized_entropy(z, targets, conds)
 
     assert torch.autograd.gradcheck(loss_fn, (logits,), eps=1e-6, atol=1e-4, rtol=1e-3)

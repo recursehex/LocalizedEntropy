@@ -5,6 +5,7 @@ from scipy.stats import norm
 
 
 def _sigmoid(x: np.ndarray, mu: float, s: float) -> np.ndarray:
+    """Compute a shifted/scaled sigmoid."""
     return 1.0 / (1.0 + np.exp(-(x - mu) / s))
 
 
@@ -21,6 +22,7 @@ def generate_probs(
     max_age: int = 100,
     rng: Optional[np.random.Generator] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Sample synthetic net worth, age, and click probabilities."""
     if rng is None:
         rng = np.random.default_rng()
 
@@ -39,6 +41,7 @@ def generate_probs(
 
 
 def _sample_condition_params(cfg: Dict, rng: np.random.Generator) -> Tuple[float, float, float, float, float, float, float]:
+    """Sample per-condition parameters for synthetic data generation."""
     sig_mu_range = cfg["sigmoid_mu_range"]
     sig_s_range = cfg["sigmoid_s_range"]
     age_mu_range = cfg["age_mu_range"]
@@ -59,6 +62,7 @@ def make_dataset(
     cfg: Dict,
     seed: int,
 ) -> Dict[str, np.ndarray]:
+    """Generate a synthetic dataset with per-condition distributions."""
     rng = np.random.default_rng(seed)
     num_conditions = int(cfg["num_conditions"])
     min_samples = int(cfg["min_samples_per_condition"])
@@ -100,6 +104,7 @@ def make_dataset(
 
 
 def build_features(dataset: Dict[str, np.ndarray], cfg: Dict) -> Dict[str, np.ndarray]:
+    """Build numeric feature matrix for synthetic data."""
     ages = dataset["ages"]
     net_worth = dataset["net_worth"]
     log10_nw = np.log10(np.clip(net_worth, 1e-12, None))

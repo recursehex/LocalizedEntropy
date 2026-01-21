@@ -15,6 +15,7 @@ def binary_cross_entropy(
     nw_multiplier: float = 1.0,
     reduction: str = "mean",
 ) -> torch.Tensor:
+    """Compute a loop-based BCE loss with optional condition weighting."""
     logits_flat = logits.view(-1)
     targets_flat = targets.view(-1)
     conds_flat = np.asarray(conditions_np).reshape(-1)

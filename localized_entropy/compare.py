@@ -24,6 +24,7 @@ def build_comparison_frame(
     bce_le_stats: dict,
     le_le_stats: dict,
 ) -> pd.DataFrame:
+    """Build a per-condition comparison frame for BCE vs LE."""
     bce_cal = per_condition_calibration(bce_preds, labels, conds)
     le_cal = per_condition_calibration(le_preds, labels, conds)
 
@@ -65,6 +66,7 @@ def build_comparison_frame(
 
 
 def sort_comparison_frame(df: pd.DataFrame, sort_by: str) -> pd.DataFrame:
+    """Sort the comparison frame by a requested column or delta metric."""
     if sort_by == "abs_delta_calibration":
         return df.sort_values("delta_calibration", key=lambda s: s.abs(), ascending=False)
     if sort_by == "abs_delta_le_ratio":
@@ -79,6 +81,7 @@ def format_comparison_table(
     top_k: int = 20,
     float_format: str = "{:.6g}",
 ) -> str:
+    """Format a DataFrame into a fixed-width text table."""
     if df is None or len(df) == 0:
         return ""
     top_k = max(int(top_k), 1)
@@ -138,6 +141,7 @@ def summarize_model_metrics(
     small_prob_max: float = 0.01,
     small_prob_quantile: float = 0.1,
 ) -> dict:
+    """Compute a standard set of evaluation metrics from predictions."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
     logloss = bce_log_loss(p, y)
@@ -175,6 +179,7 @@ def _winner(
     lower_is_better: bool,
     tol: float = 1e-8,
 ) -> str:
+    """Choose the winning method, handling ties and NaNs."""
     bce_ok = np.isfinite(bce_val)
     le_ok = np.isfinite(le_val)
     if not bce_ok and not le_ok:
@@ -198,6 +203,7 @@ def format_bce_le_summary(
     ece_min_count: int = 1,
     threshold: float = 0.5,
 ) -> str:
+    """Format a summary comparing BCE vs LE metrics."""
     labels = np.asarray(eval_labels, dtype=np.float64).reshape(-1)
     bce_metrics = summarize_model_metrics(
         bce_result.eval_preds,
@@ -236,6 +242,7 @@ def format_bce_le_summary(
     )
 
     def fmt(val: float) -> str:
+        """Format metric values, preserving NaNs."""
         return "nan" if not np.isfinite(val) else f"{val:.6g}"
 
     lines = [
@@ -258,6 +265,7 @@ def compare_bce_le_runs(
     condition_label: str,
     sort_by: str = "count",
 ) -> pd.DataFrame:
+    """Build a per-condition BCE vs LE comparison table."""
     if bce_result.eval_logits is None or bce_result.eval_targets is None or bce_result.eval_conds is None:
         raise ValueError("BCE results missing eval logits/targets/conditions.")
     if le_result.eval_logits is None or le_result.eval_targets is None or le_result.eval_conds is None:
@@ -308,6 +316,7 @@ _DEFAULT_REPEAT_METRICS: Dict[str, bool] = {
 
 
 def _resolve_repeat_metrics(metrics: Optional[Dict[str, bool]] = None) -> Dict[str, bool]:
+    """Merge custom repeat-metric settings with defaults."""
     if metrics is None:
         return dict(_DEFAULT_REPEAT_METRICS)
     return dict(metrics)
@@ -320,6 +329,7 @@ def _safe_wilcoxon(
     zero_method: str = "wilcox",
     alternative: str = "two-sided",
 ) -> Tuple[float, float]:
+    """Run Wilcoxon with compatibility handling for SciPy versions."""
     try:
         # SciPy's wilcoxon signature varies across versions; handle both.
         stat, p_value = wilcoxon(x, y, zero_method=zero_method, alternative=alternative)
@@ -342,6 +352,7 @@ def build_repeat_metrics_frame(
     run_label: str = "run",
     run_values: Optional[Iterable[int]] = None,
 ) -> pd.DataFrame:
+    """Build a DataFrame of metrics for repeated runs."""
     labels = np.asarray(eval_labels, dtype=np.float64).reshape(-1)
     if labels.size == 0:
         raise ValueError("Eval labels are empty; cannot summarize repeated runs.")
@@ -375,6 +386,7 @@ def summarize_repeat_metrics(
     *,
     metrics: Optional[Dict[str, bool]] = None,
 ) -> pd.DataFrame:
+    """Summarize repeated-run metrics with mean/std/min/max."""
     metric_map = _resolve_repeat_metrics(metrics)
     rows = []
     for metric in metric_map:
@@ -405,6 +417,7 @@ def build_wilcoxon_summary(
     zero_method: str = "wilcox",
     alternative: str = "two-sided",
 ) -> pd.DataFrame:
+    """Compute Wilcoxon signed-rank tests across metrics."""
     metric_map = _resolve_repeat_metrics(metrics)
     rows = []
     for metric, lower_is_better in metric_map.items():
@@ -440,6 +453,7 @@ def format_wilcoxon_summary(
     *,
     float_format: str = "{:.6g}",
 ) -> str:
+    """Format a Wilcoxon summary DataFrame as text."""
     if summary_df is None or len(summary_df) == 0:
         return ""
     columns = [
@@ -464,6 +478,7 @@ def _per_condition_pred_mean(
     conds: np.ndarray,
     num_conditions: int,
 ) -> np.ndarray:
+    """Compute mean prediction per condition."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     c = np.asarray(conds, dtype=np.int64).reshape(-1)
     sums = np.bincount(c, weights=p, minlength=num_conditions)
@@ -482,6 +497,7 @@ def build_per_condition_calibration_wilcoxon(
     alternative: str = "two-sided",
     min_count: int = 1,
 ) -> pd.DataFrame:
+    """Compare per-condition calibration gaps via Wilcoxon tests."""
     if len(bce_runs) != len(le_runs):
         raise ValueError("Repeat run counts do not match between BCE and LE.")
     labels = np.asarray(eval_labels, dtype=np.float64).reshape(-1)
@@ -537,6 +553,7 @@ def build_per_condition_calibration_wilcoxon(
 
 
 def sort_per_condition_wilcoxon_frame(df: pd.DataFrame, sort_by: str) -> pd.DataFrame:
+    """Sort per-condition Wilcoxon summary rows."""
     if sort_by == "p_value":
         return df.sort_values("p_value", ascending=True)
     if sort_by == "abs_delta_mean":

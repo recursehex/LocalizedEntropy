@@ -5,6 +5,7 @@ import torch
 
 
 def set_seed(seed: int, use_cuda: bool) -> None:
+    """Seed NumPy and PyTorch RNGs (including CUDA when enabled)."""
     np.random.seed(seed)
     torch.manual_seed(seed)
     if use_cuda:
@@ -12,6 +13,7 @@ def set_seed(seed: int, use_cuda: bool) -> None:
 
 
 def dedupe(seq: Iterable) -> List:
+    """Return a list with duplicates removed while preserving order."""
     seen = set()
     out = []
     for item in seq:
@@ -22,6 +24,7 @@ def dedupe(seq: Iterable) -> List:
 
 
 def is_notebook() -> bool:
+    """Return True when running inside a Jupyter notebook."""
     try:
         from IPython import get_ipython
         shell = get_ipython()
@@ -33,6 +36,7 @@ def is_notebook() -> bool:
 
 
 def init_device(verbose: bool = True):
+    """Initialize CUDA/CPU device and non_blocking flag."""
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     non_blocking = use_cuda

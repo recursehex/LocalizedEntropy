@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 
 
 def print_feature_stats(name: str, features: Optional[np.ndarray]) -> None:
+    """Print basic statistics for a feature matrix."""
     if features is None:
         print(f"{name}: None")
         return
@@ -29,6 +30,7 @@ def print_condition_stats(
     conds: Optional[np.ndarray],
     num_conditions: int,
 ) -> None:
+    """Print per-condition counts and ranges."""
     if conds is None:
         print(f"{name}: None")
         return
@@ -50,6 +52,7 @@ def print_label_stats(
     conds: Optional[np.ndarray],
     num_conditions: int,
 ) -> None:
+    """Print label distribution stats with optional per-condition rates."""
     if labels is None:
         print(f"{name}: None")
         return
@@ -79,6 +82,7 @@ def print_pred_summary(
     conds: Optional[np.ndarray] = None,
     top_k: int = 8,
 ) -> None:
+    """Print summary statistics for predictions and optional labels/conditions."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     q = np.quantile(p, [0.0, 0.01, 0.05, 0.5, 0.95, 0.99, 1.0])
     print(f"{name} prediction summary:")
@@ -124,6 +128,7 @@ def print_pred_stats_by_condition(
     *,
     name: str = "Eval",
 ) -> None:
+    """Print min/max/mean predictions per condition."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     c = np.asarray(conds, dtype=np.int64).reshape(-1)
     counts = np.bincount(c, minlength=int(num_conditions))
@@ -141,6 +146,7 @@ def print_pred_stats_by_condition(
 
 
 def bce_log_loss(preds: np.ndarray, labels: np.ndarray, eps: float = 1e-12) -> float:
+    """Compute BCE log loss from probabilities and labels."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
     p_clip = np.clip(p, eps, 1.0 - eps)
@@ -148,6 +154,7 @@ def bce_log_loss(preds: np.ndarray, labels: np.ndarray, eps: float = 1e-12) -> f
 
 
 def roc_auc_score(preds: np.ndarray, labels: np.ndarray) -> float:
+    """Compute ROC-AUC from probabilities and binary labels."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
     mask = np.isfinite(p) & np.isfinite(y)
@@ -182,6 +189,7 @@ def roc_auc_score(preds: np.ndarray, labels: np.ndarray) -> float:
 
 
 def pr_auc_score(preds: np.ndarray, labels: np.ndarray) -> float:
+    """Compute PR-AUC (average precision) from probabilities and labels."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
     mask = np.isfinite(p) & np.isfinite(y)
@@ -206,6 +214,7 @@ def _binary_classification_counts(
     *,
     threshold: float = 0.5,
 ) -> Tuple[int, int, int, int]:
+    """Return TP/FP/TN/FN counts at a probability threshold."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
     if p.size == 0 or y.size == 0:
@@ -225,6 +234,7 @@ def binary_classification_metrics(
     *,
     threshold: float = 0.5,
 ) -> dict:
+    """Compute accuracy/precision/recall/F1 at a threshold."""
     tp, fp, tn, fn = _binary_classification_counts(
         preds, labels, threshold=threshold
     )
@@ -254,6 +264,7 @@ def expected_calibration_error(
     bins: int = 20,
     min_count: int = 1,
 ) -> Tuple[float, pd.DataFrame]:
+    """Compute ECE and return a per-bin calibration table."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
     edges = np.linspace(0.0, 1.0, bins + 1)
@@ -305,6 +316,7 @@ def per_condition_metrics(
     small_prob_max: float = 0.01,
     threshold: float = 0.5,
 ) -> pd.DataFrame:
+    """Compute metrics per condition, including calibration and accuracy."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
     c = np.asarray(conds).reshape(-1)
@@ -353,6 +365,7 @@ def per_condition_calibration(
     conds: np.ndarray,
     eps: float = 1e-12,
 ) -> pd.DataFrame:
+    """Compute per-condition base rate and calibration ratio."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
     c = np.asarray(conds, dtype=np.int64).reshape(-1)
@@ -386,6 +399,7 @@ def per_condition_calibration(
 
 
 def le_stats_to_frame(stats: dict) -> pd.DataFrame:
+    """Convert LE stats dict into a DataFrame."""
     rows = []
     for cond, payload in stats.items():
         rows.append(
@@ -423,6 +437,7 @@ def summarize_per_ad_train_eval_rates(
     eval_name: str,
     top_k: int = 10,
 ) -> Optional[pd.DataFrame]:
+    """Summarize per-condition train rates vs eval prediction averages."""
     top_k = max(int(top_k), 1)
     train_has = train_labels is not None and train_conds is not None
     eval_has = eval_preds is not None and eval_conds is not None
@@ -517,6 +532,7 @@ def collect_le_stats_per_condition(
     conditions: torch.Tensor,
     eps: float = 1e-12,
 ):
+    """Compute LE numerator/denominator stats per condition."""
     z = logits.view(-1)
     y = targets.view(-1).to(z.dtype)
     c = conditions.view(-1).to(torch.long)
@@ -555,6 +571,7 @@ def collect_logits(
     device: torch.device,
     non_blocking: bool = False,
 ):
+    """Collect logits, targets, and conditions over a loader."""
     model.eval()
     all_logits, all_targets, all_conditions = [], [], []
     for xb, x_cat, cb, yb, nw in loader:

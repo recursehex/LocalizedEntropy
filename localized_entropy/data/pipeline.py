@@ -55,6 +55,7 @@ class PreparedData:
 
 
 def _instantiate_loader(dataset: Dataset, *, shuffle: bool, loader_common: Dict, worker_kwargs: Dict) -> DataLoader:
+    """Instantiate a PyTorch DataLoader with shared options."""
     kwargs = dict(loader_common)
     if worker_kwargs:
         kwargs.update(worker_kwargs)
@@ -63,6 +64,7 @@ def _instantiate_loader(dataset: Dataset, *, shuffle: bool, loader_common: Dict,
 
 
 def _build_loader_with_fallback(dataset: Dataset, *, shuffle: bool, role: str, loader_common: Dict, worker_kwargs: Dict) -> DataLoader:
+    """Build a DataLoader and fall back to num_workers=0 on failure."""
     if not worker_kwargs:
         return _instantiate_loader(dataset, shuffle=shuffle, loader_common=loader_common, worker_kwargs={})
     test_iter = None
@@ -83,6 +85,7 @@ def _build_loader_with_fallback(dataset: Dataset, *, shuffle: bool, role: str, l
 
 
 def _apply_indices(arr: Optional[np.ndarray], idx: np.ndarray) -> Optional[np.ndarray]:
+    """Apply a shared index array to an optional ndarray."""
     if arr is None:
         return None
     return arr[idx]
@@ -93,6 +96,7 @@ def _balance_indices_by_condition(
     num_conditions: int,
     rng: np.random.Generator,
 ) -> Tuple[Optional[np.ndarray], int, np.ndarray]:
+    """Downsample each condition to the minimum non-zero count."""
     c = np.asarray(conds, dtype=np.int64).reshape(-1)
     counts = np.bincount(c, minlength=int(num_conditions))
     nonzero_counts = counts[counts > 0]
@@ -121,6 +125,7 @@ def build_dataloaders(
     device: torch.device,
     use_cuda: bool,
 ) -> LoaderBundle:
+    """Construct train/eval/test loaders from prepared splits."""
     batch_size = int(cfg["training"]["batch_size"])
     move_dataset_to_cuda = bool(cfg["device"]["move_dataset_to_cuda"])
     allow_dataloader_workers = cfg["device"].get("allow_dataloader_workers")
@@ -240,6 +245,7 @@ def build_dataloaders(
 
 
 def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedData:
+    """Load/prepare data arrays and return splits, loaders, and plot data."""
     seed = int(cfg["project"]["seed"])
     data_cfg = cfg["data"]
     source = data_cfg["source"].lower().strip()

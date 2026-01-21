@@ -5,6 +5,7 @@ import pandas as pd
 
 
 def build_condition_encoder(train_series: pd.Series, max_conditions: Optional[int]):
+    """Build a mapping from condition values to integer IDs."""
     counts = train_series.value_counts()
     if (max_conditions is not None) and (max_conditions > 0):
         top = counts.nlargest(max_conditions - 1).index
@@ -17,10 +18,12 @@ def build_condition_encoder(train_series: pd.Series, max_conditions: Optional[in
 
 
 def encode_conditions(series: pd.Series, mapping: Dict, other_id: int) -> np.ndarray:
+    """Encode condition values into IDs with an 'other' bucket."""
     return series.map(mapping).fillna(other_id).astype(np.int64).to_numpy()
 
 
 def train_eval_split(n_total: int, train_ratio: float, seed: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Split indices into train/eval partitions with a RNG permutation."""
     rng = np.random.default_rng(seed)
     idx = rng.permutation(n_total)
     split = int(train_ratio * n_total)
@@ -33,6 +36,7 @@ def standardize_features(
     x_test: Optional[np.ndarray],
     eps: float,
 ):
+    """Standardize features using train mean/std and apply to eval/test."""
     mu = x_train.mean(axis=0)
     sd = x_train.std(axis=0)
     sd[sd < eps] = 1.0

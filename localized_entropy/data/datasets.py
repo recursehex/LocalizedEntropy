@@ -14,6 +14,7 @@ class ConditionDataset(Dataset):
         x_cat=None,
         share_memory: bool = False,
     ):
+        """Wrap numeric/categorical features with condition/label targets."""
         assert x_num.ndim == 2 and x_num.shape[1] >= 1
         assert len(x_num) == len(conds) == len(labels)
         self.x = torch.as_tensor(x_num, dtype=torch.float32).contiguous()
@@ -35,9 +36,11 @@ class ConditionDataset(Dataset):
                     tensor.share_memory_()
 
     def __len__(self) -> int:
+        """Return the number of samples."""
         return self.y.numel()
 
     def __getitem__(self, idx: int):
+        """Return a single training example tuple."""
         return (
             self.x[idx],
             self.x_cat[idx],
@@ -54,6 +57,7 @@ class TensorBatchLoader:
         batch_size: int,
         shuffle: bool,
     ):
+        """Batch tensors already staged on a device."""
         assert len(tensors) > 0
         n = tensors[0].shape[0]
         for t in tensors[1:]:
@@ -65,13 +69,16 @@ class TensorBatchLoader:
         self.device = tensors[0].device
 
     def __len__(self) -> int:
+        """Return the number of batches per epoch."""
         return (self.length + self.batch_size - 1) // self.batch_size
 
     @property
     def num_workers(self) -> int:
+        """Expose a DataLoader-compatible num_workers value."""
         return 0
 
     def __iter__(self):
+        """Yield batches of tensors by index selection."""
         # Build indices on the same device as tensors to avoid host/device sync.
         indices = torch.arange(self.length, device=self.device, dtype=torch.long)
         if self.shuffle:

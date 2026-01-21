@@ -21,6 +21,7 @@ def _density_lines(
     density: bool = True,
     output_path: Optional[Union[str, Path]] = None,
 ) -> None:
+    """Plot per-condition density or count lines for a feature array."""
     vals = values.astype(np.float64).copy()
     if transform == "log10":
         eps = 1e-12
@@ -64,6 +65,7 @@ def plot_training_distributions(
     conds: np.ndarray,
     num_conditions: int,
 ) -> None:
+    """Plot synthetic training distributions by condition."""
     _density_lines(
         values=net_worth,
         groups=conds,
@@ -95,6 +97,7 @@ def plot_training_distributions(
 
 
 def plot_eval_log10p_hist(preds: np.ndarray, epoch: int, bins: int = 100, *, name: str = "Eval") -> None:
+    """Plot a histogram of log10 predicted probabilities."""
     eps = 1e-12
     log10p = np.log10(np.clip(preds, eps, 1.0))
     plt.figure(figsize=(8, 5))
@@ -115,6 +118,7 @@ def plot_loss_curves(
     eval_batch_losses=None,
     output_path: Optional[Union[str, Path]] = None,
 ) -> None:
+    """Plot train/eval loss curves, optionally including batch evals."""
     plt.figure(figsize=(8, 5))
     epochs = np.arange(len(train_losses))
     plt.plot(epochs, train_losses, label=f"Train {loss_label}")
@@ -176,6 +180,7 @@ def plot_eval_predictions_by_condition(
     value_range: Tuple[float, float] = (-12, 0),
     output_path: Optional[Union[str, Path]] = None,
 ) -> None:
+    """Plot per-condition prediction distributions."""
     if title is None:
         title = f"{name} Predictions: Distribution by Condition (log10(pred probability))"
     if preds.size == 0:
@@ -212,6 +217,7 @@ def plot_feature_distributions_by_condition(
     log10_features: Optional[set] = None,
     density: bool = True,
 ) -> None:
+    """Plot selected feature distributions by condition."""
     if log10_features is None:
         log10_features = set()
     num_features = min(len(feature_names), xnum.shape[1], max_features)
@@ -235,6 +241,7 @@ def plot_label_rates_by_condition(
     conds: np.ndarray,
     num_conditions: int,
 ) -> None:
+    """Plot per-condition sample counts and label base rates."""
     c = conds.astype(np.int64).reshape(-1)
     y = labels.astype(np.float64).reshape(-1)
     counts = np.bincount(c, minlength=num_conditions)
@@ -260,6 +267,7 @@ def plot_label_rates_by_condition(
 
 
 def plot_le_stats_per_condition(stats: dict, title: str = "Localized Entropy terms per condition"):
+    """Plot LE numerator/denominator stats per condition."""
     conds = sorted(stats.keys())
     nums = [stats[c]["Numerator"] for c in conds]
     dens = [stats[c]["Denominator"] for c in conds]
@@ -315,6 +323,7 @@ def plot_grad_sq_sums_by_condition(
     top_k: int = 0,
     log10: bool = True,
 ) -> None:
+    """Plot per-condition gradient sum of squares for BCE vs LE."""
     if bce_sums is None and le_sums is None:
         print("[WARN] No gradient stats available; skipping grad plot.")
         return
@@ -339,6 +348,7 @@ def plot_grad_sq_sums_by_condition(
             le_vals = le_vals[order]
 
     def _transform(vals: np.ndarray) -> np.ndarray:
+        """Optionally log10-transform values for plotting."""
         if not log10:
             return vals
         eps = 1e-12
@@ -373,6 +383,7 @@ def plot_grad_sq_sums_by_condition(
 
 
 def plot_ctr_filter_stats(stats_df, labels, filter_col: str) -> None:
+    """Plot CTR filter summary stats."""
     if stats_df is None:
         return
     print("Filter stats (click):")
@@ -407,6 +418,7 @@ def plot_pred_to_train_rate(
     eval_name: str,
     output_path: Optional[Union[str, Path]] = None,
 ) -> None:
+    """Plot eval prediction averages vs train base rates."""
     if plot_df is None or len(plot_df) == 0:
         print("[WARN] Plot data unavailable; skipping pred/train ratio chart.")
         return
@@ -437,6 +449,7 @@ def plot_per_ad_f1_logp(
     name: str = "Eval",
     bins: int = 60,
 ) -> None:
+    """Plot log10(F1) distribution across conditions."""
     if per_ad_df is None or len(per_ad_df) == 0:
         print("[WARN] No per-condition metrics available; skipping F1 log plot.")
         return
@@ -471,7 +484,9 @@ def build_eval_epoch_plotter(
     condition_label: str,
     loss_label: str,
 ):
+    """Build a per-epoch prediction plot callback."""
     def _plot(preds: np.ndarray, epoch: int) -> None:
+        """Plot eval predictions for a single epoch."""
         if preds.size == 0:
             print(f"Epoch {epoch}: {train_eval_name} set empty; skipping eval plots.")
             return
@@ -500,7 +515,9 @@ def build_eval_batch_plotter(
     condition_label: str,
     loss_label: str,
 ):
+    """Build a per-batch prediction plot callback."""
     def _plot(preds: np.ndarray, epoch: int, batch_idx: int) -> None:
+        """Plot eval predictions for a single batch checkpoint."""
         if preds.size == 0:
             print(
                 f"Epoch {epoch} Batch {batch_idx}: {train_eval_name} set empty; skipping eval plots."
@@ -535,6 +552,7 @@ def plot_metric_comparison_table(
     float_format: str = "{:.4g}",
     show: bool = True,
 ) -> None:
+    """Render a DataFrame as a matplotlib table."""
     if df is None or len(df) == 0:
         print("[WARN] No data for comparison table; skipping plot.")
         return

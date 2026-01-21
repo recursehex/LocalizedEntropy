@@ -9,6 +9,7 @@ from localized_entropy.config import get_data_source
 
 
 def _normalize_filter_mode(mode: Optional[str]) -> str:
+    """Normalize filter mode strings to a canonical token."""
     if not mode:
         return ""
     text = str(mode).strip().lower()
@@ -24,11 +25,13 @@ def _normalize_filter_mode(mode: Optional[str]) -> str:
 
 
 def resolve_loss_dir(loss_mode: str) -> str:
+    """Map a loss mode to its output directory name."""
     text = str(loss_mode).strip().lower()
     return "le" if text in {"localized_entropy", "le"} else "bce"
 
 
 def resolve_nn_type(cfg: Dict) -> str:
+    """Infer the network size label from the experiment name."""
     exp_cfg = cfg.get("experiment", {})
     name = exp_cfg.get("name") or exp_cfg.get("active") or ""
     text = str(name).strip().lower()
@@ -42,6 +45,7 @@ def resolve_nn_type(cfg: Dict) -> str:
 
 
 def resolve_filter_mode(cfg: Dict) -> str:
+    """Resolve the active filter mode for output paths."""
     data_source = get_data_source(cfg)
     if data_source != "ctr":
         return "ids"
@@ -67,6 +71,7 @@ def resolve_filter_mode(cfg: Dict) -> str:
 
 
 def build_output_dir(cfg: Dict, loss_mode: str, *, root: Union[Path, str] = "output") -> Path:
+    """Build the base output directory for a run."""
     data_source = get_data_source(cfg)
     nn_type = resolve_nn_type(cfg)
     filter_mode = resolve_filter_mode(cfg)
@@ -79,6 +84,7 @@ def build_output_paths(
     *,
     root: Union[Path, str] = "output",
 ) -> Dict[str, Path]:
+    """Build output file paths for plots and logs."""
     base = build_output_dir(cfg, loss_mode, root=root)
     return {
         "pred_to_train_rate": base / "avg.png",
@@ -89,10 +95,12 @@ def build_output_paths(
 
 
 def _normalize_text(value: str) -> str:
+    """Normalize newlines to Unix-style."""
     return value.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _stringify_output(output: dict) -> str:
+    """Convert a notebook output dict into a text block."""
     output_type = output.get("output_type")
     if output_type == "stream":
         return _normalize_text(output.get("text", ""))
@@ -110,6 +118,7 @@ def _stringify_output(output: dict) -> str:
 
 
 def _ensure_cell_ids(nb: dict) -> dict:
+    """Ensure each notebook cell has a stable ID."""
     import uuid
 
     for cell in nb.get("cells", []):
@@ -119,6 +128,7 @@ def _ensure_cell_ids(nb: dict) -> dict:
 
 
 def _normalize_notebook(nb: dict, version: int) -> dict:
+    """Normalize notebook structure while ensuring cell IDs."""
     try:
         from nbformat import validator
     except Exception:
@@ -133,6 +143,7 @@ def _normalize_notebook(nb: dict, version: int) -> dict:
 
 
 def _read_notebook(notebook_path: Path, as_version: int) -> dict:
+    """Read and normalize a notebook as a specific version."""
     import nbformat
 
     raw = notebook_path.read_text(encoding="utf-8")
@@ -143,6 +154,7 @@ def _read_notebook(notebook_path: Path, as_version: int) -> dict:
 
 
 def collect_notebook_outputs(notebook_path: Path) -> List[str]:
+    """Collect text outputs from code cells in a notebook."""
     nb = _read_notebook(notebook_path, as_version=4)
     blocks: List[str] = []
     for idx, cell in enumerate(nb.get("cells", [])):
@@ -160,6 +172,7 @@ def collect_notebook_outputs(notebook_path: Path) -> List[str]:
 
 
 def save_notebook_outputs(notebook_path: Path, output_path: Path) -> bool:
+    """Write notebook outputs to a text file."""
     if not notebook_path.exists():
         print(f"[WARN] Notebook not found: {notebook_path}")
         return False
@@ -177,44 +190,53 @@ def save_notebook_outputs(notebook_path: Path, output_path: Path) -> bool:
 
 class _TeeStream:
     def __init__(self, primary, extras: List[TextIO]):
+        """Mirror writes to a primary stream and extra targets."""
         self._primary = primary
         self._extras = extras
 
     def write(self, text: str) -> int:
+        """Write text to all streams."""
         written = self._primary.write(text)
         for stream in self._extras:
             stream.write(text)
         return written
 
     def writelines(self, lines) -> None:
+        """Write multiple lines to all streams."""
         for line in lines:
             self.write(line)
 
     def flush(self) -> None:
+        """Flush all wrapped streams."""
         self._primary.flush()
         for stream in self._extras:
             stream.flush()
 
     @property
     def encoding(self):
+        """Expose the primary stream encoding."""
         return getattr(self._primary, "encoding", "utf-8")
 
     def isatty(self) -> bool:
+        """Proxy terminal detection to the primary stream."""
         if hasattr(self._primary, "isatty"):
             return bool(self._primary.isatty())
         return False
 
     def __getattr__(self, name):
+        """Delegate unknown attributes to the primary stream."""
         return getattr(self._primary, name)
 
 
 class NotebookOutputCapture:
     def __init__(self, stdout, stderr, handles: List[TextIO]):
+        """Capture stdout/stderr and tee output to files."""
         self._stdout = stdout
         self._stderr = stderr
         self._handles = handles
 
     def stop(self) -> None:
+        """Restore stdout/stderr and close output handles."""
         sys.stdout = self._stdout
         sys.stderr = self._stderr
         for handle in self._handles:
@@ -223,6 +245,7 @@ class NotebookOutputCapture:
 
 
 def start_notebook_output_capture(output_paths: Dict[str, Dict[str, Path]]) -> NotebookOutputCapture:
+    """Start teeing notebook output to configured log files."""
     targets = []
     for paths in output_paths.values():
         target = paths.get("notebook_output")

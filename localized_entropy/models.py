@@ -9,6 +9,7 @@ _LayerSpec = Union[_LayerValue, Sequence[_LayerValue]]
 
 
 def _expand_per_layer(value: _LayerSpec, num_layers: int, name: str) -> List[_LayerValue]:
+    """Expand a scalar or list into a per-layer list."""
     if num_layers < 0:
         raise ValueError(f"{name} requires a non-negative layer count.")
     if num_layers == 0:
@@ -27,6 +28,7 @@ def _expand_per_layer(value: _LayerSpec, num_layers: int, name: str) -> List[_La
 
 
 def _resolve_activation(name: Optional[str]) -> Optional[nn.Module]:
+    """Resolve an activation name to a PyTorch module."""
     if name is None:
         return None
     key = str(name).strip().lower()
@@ -52,6 +54,7 @@ def _resolve_activation(name: Optional[str]) -> Optional[nn.Module]:
 
 
 def _resolve_norm(name: Optional[str], dim: int) -> Optional[nn.Module]:
+    """Resolve a normalization name to a PyTorch module."""
     if name is None:
         return None
     key = str(name).strip().lower()
@@ -65,6 +68,7 @@ def _resolve_norm(name: Optional[str], dim: int) -> Optional[nn.Module]:
 
 
 def _resolve_dropout(value: _LayerValue) -> float:
+    """Normalize dropout configuration to a probability."""
     if value is None:
         return 0.0
     if isinstance(value, str):
@@ -91,6 +95,7 @@ class ConditionProbNet(nn.Module):
         activation: _LayerSpec = "relu",
         norm: _LayerSpec = None,
     ):
+        """Build an MLP with condition and categorical embeddings."""
         super().__init__()
         if hidden_sizes is None:
             hidden_sizes = (256, 256, 128, 64)
@@ -127,6 +132,7 @@ class ConditionProbNet(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x_num: torch.Tensor, x_cat: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+        """Compute logits for numeric/categorical inputs and condition IDs."""
         emb = self.embedding(cond)
         # Concatenate numeric features with condition + categorical embeddings before the MLP.
         parts = [x_num, emb]

@@ -31,6 +31,7 @@ class TrainRunResult:
 
 
 def build_model(cfg: dict, splits, device: torch.device) -> ConditionProbNet:
+    """Construct a ConditionProbNet from config and data splits."""
     model_cfg = cfg["model"]
     hidden_sizes = model_cfg.get("hidden_sizes")
     if hidden_sizes is not None:
@@ -57,6 +58,7 @@ def build_model(cfg: dict, splits, device: torch.device) -> ConditionProbNet:
 
 
 def resolve_eval_bundle(cfg, splits, loaders):
+    """Resolve which split/loader/labels to use for evaluation."""
     eval_cfg = cfg.get("evaluation", {})
     eval_split = str(eval_cfg.get("split", "eval")).lower().strip()
     valid_splits = {"train", "eval", "test"}
@@ -95,6 +97,7 @@ def resolve_train_eval_bundle(
     loaders,
     splits,
 ) -> Tuple[DataLoader, Optional[np.ndarray], str]:
+    """Resolve the eval loader used during training for plots/diagnostics."""
     train_eval_loader = loaders.eval_loader
     train_eval_conds = splits.c_eval
     train_eval_name = "Eval"
@@ -120,6 +123,7 @@ def evaluate_or_predict(
     eval_has_labels: bool,
     non_blocking: bool = False,
 ) -> Tuple[float, np.ndarray]:
+    """Run eval loss if labels exist, otherwise return predictions only."""
     if eval_has_labels:
         return evaluate(
             model,
@@ -157,6 +161,7 @@ def train_single_loss(
     collect_grad_sq_sums: bool = False,
     collect_eval_batch_losses: bool = False,
 ) -> TrainRunResult:
+    """Train one model/loss mode and collect evaluation outputs."""
     train_losses, eval_losses, grad_sq_sums, eval_batch_losses = train_with_epoch_plots(
         model=model,
         train_loader=train_loader,
@@ -203,6 +208,7 @@ def train_single_loss(
 
 
 def build_seed_sequence(base_seed: int, num_runs: int, seed_stride: int = 1) -> List[int]:
+    """Build a deterministic list of seeds for repeated runs."""
     if num_runs < 1:
         return []
     stride = int(seed_stride)
@@ -224,6 +230,7 @@ def run_repeated_loss_experiments(
     non_blocking: bool = False,
     collect_eval_logits: bool = False,
 ) -> Dict[str, List[TrainRunResult]]:
+    """Run repeated training for each loss mode and seed."""
     train_cfg = cfg["training"]
     results: Dict[str, List[TrainRunResult]] = {loss_mode: [] for loss_mode in loss_modes}
     for seed in seeds:

@@ -21,6 +21,7 @@ def evaluate(
     loss_mode: str = "localized_entropy",
     non_blocking: bool = False,
 ) -> Tuple[float, np.ndarray]:
+    """Evaluate a model and return mean loss plus predictions."""
     model.eval()
     total_loss = 0.0
     total_count = 0
@@ -73,6 +74,7 @@ def predict_probs(
     device: torch.device,
     non_blocking: bool = False,
 ) -> np.ndarray:
+    """Run inference and return sigmoid probabilities."""
     model.eval()
     preds_all = []
     verified_cuda_batch = False
@@ -95,17 +97,20 @@ def predict_probs(
 
 class StreamingBaseRate:
     def __init__(self, num_conditions: int, device: torch.device, dtype: torch.dtype = torch.float32):
+        """Track per-condition base rates with streaming updates."""
         self.num_conditions = int(num_conditions)
         self.device = device
         self.dtype = dtype
         self.reset()
 
     def reset(self):
+        """Reset counts and sums for a new epoch."""
         self.counts = torch.zeros(self.num_conditions, dtype=torch.long, device=self.device)
         self.sum_ones = torch.zeros(self.num_conditions, dtype=self.dtype, device=self.device)
 
     @torch.no_grad()
     def update(self, y: torch.Tensor, c: torch.Tensor):
+        """Update counts and sums from a batch of labels/conditions."""
         c = c.view(-1).to(torch.long)
         y = y.view(-1).to(self.dtype)
         cnt = torch.bincount(c, minlength=self.num_conditions)
@@ -115,6 +120,7 @@ class StreamingBaseRate:
 
     @torch.no_grad()
     def rates(self, eps: float = 1e-12) -> torch.Tensor:
+        """Return base rates per condition with clamping."""
         denom = self.counts.clamp_min(1).to(self.sum_ones.dtype)
         return (self.sum_ones / denom).clamp(eps, 1.0 - eps)
 
@@ -138,6 +144,7 @@ def train_with_epoch_plots(
     track_eval_batch_losses: bool = False,
     track_grad_sq_sums: bool = False,
 ) -> Tuple[List[float], List[float], Optional[np.ndarray], List[dict]]:
+    """Train a model while optionally collecting plots and diagnostics."""
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     train_losses: List[float] = []
     val_losses: List[float] = []

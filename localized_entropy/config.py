@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 
 def load_config(path: str) -> Dict[str, Any]:
+    """Load a JSON config file from disk."""
     config_path = Path(path)
     if not config_path.exists():
         raise FileNotFoundError(f"Config not found: {config_path}")
@@ -12,6 +13,7 @@ def load_config(path: str) -> Dict[str, Any]:
 
 
 def _deep_update(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively merge updates into a base dict."""
     for key, value in updates.items():
         if isinstance(value, dict) and isinstance(base.get(key), dict):
             base[key] = _deep_update(base[key], value)
@@ -21,6 +23,7 @@ def _deep_update(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any
 
 
 def resolve_experiment(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply experiment definitions and overrides to a config payload."""
     cfg = deepcopy(config)
     exp_cfg = cfg.get("experiment", {})
     active = exp_cfg.get("active")
@@ -38,6 +41,7 @@ def resolve_experiment(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def apply_training_source_overrides(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply training.by_source overrides based on the configured data source."""
     training_cfg = cfg.get("training")
     if not isinstance(training_cfg, dict):
         return cfg
@@ -54,15 +58,18 @@ def apply_training_source_overrides(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def load_and_resolve(path: str) -> Dict[str, Any]:
+    """Load config from disk and apply experiment/source overrides."""
     cfg = resolve_experiment(load_config(path))
     return apply_training_source_overrides(cfg)
 
 
 def get_data_source(cfg: Dict[str, Any]) -> str:
+    """Return the normalized data source name."""
     return cfg.get("data", {}).get("source", "synthetic").lower().strip()
 
 
 def get_condition_label(cfg: Dict[str, Any]) -> str:
+    """Return a display label for condition IDs."""
     source = get_data_source(cfg)
     if source == "ctr":
         return cfg.get("ctr", {}).get("condition_col", "Condition")
@@ -70,11 +77,14 @@ def get_condition_label(cfg: Dict[str, Any]) -> str:
 
 
 def loss_label(loss_mode: str) -> str:
+    """Map a loss mode string to a short label."""
     return "LE" if loss_mode.lower().strip() == "localized_entropy" else "BCE"
 
 
 def resolve_loss_modes(loss_mode) -> list:
+    """Normalize loss mode configuration into a list of modes."""
     def normalize(mode: str) -> Optional[str]:
+        """Normalize a loss mode string to a canonical value."""
         if mode is None:
             return None
         text = str(mode).lower().strip()
@@ -85,6 +95,7 @@ def resolve_loss_modes(loss_mode) -> list:
         return None
 
     def expand(mode: str) -> list:
+        """Expand combined loss-mode strings into a list."""
         text = str(mode).lower().strip()
         if text in {"both", "bce+le", "le+bce", "bce_le", "le_bce"}:
             return ["bce", "localized_entropy"]
