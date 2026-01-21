@@ -82,6 +82,7 @@ Step-by-step pipeline:
 - Optional mid-epoch eval callbacks can plot prediction histograms.
 - When `training.eval_every_n_batches > 0`, train/eval loss is tracked by
   batch for additional diagnostics in the loss curve plot.
+- Loss curves include an initial epoch/batch 0 train/eval loss before updates.
 - When `plots.grad_sq_by_condition=true`, the loop also accumulates
   per-condition sum of squared logits gradients for BCE vs LE.
 - If `training.loss_mode` is set to `both`, the notebook trains BCE and

@@ -116,13 +116,17 @@ def plot_loss_curves(
     output_path: Optional[Union[str, Path]] = None,
 ) -> None:
     plt.figure(figsize=(8, 5))
-    epochs = np.arange(1, len(train_losses) + 1)
+    epochs = np.arange(len(train_losses))
     plt.plot(epochs, train_losses, label=f"Train {loss_label}")
     plt.plot(epochs, eval_losses, label=f"Eval {loss_label}")
     if eval_batch_losses:
         batch_x = []
         batch_eval = []
         batch_train = []
+        if train_losses and eval_losses:
+            batch_x.append(0.0)
+            batch_train.append(float(train_losses[0]))
+            batch_eval.append(float(eval_losses[0]))
         for idx, item in enumerate(eval_batch_losses, start=1):
             x_val = item.get("epoch_progress") or item.get("epoch") or idx
             batch_x.append(x_val)

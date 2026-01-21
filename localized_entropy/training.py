@@ -158,6 +158,29 @@ def train_with_epoch_plots(
             raise RuntimeError("Model parameters must be on CUDA when device is CUDA.")
         torch.cuda.reset_peak_memory_stats(device)
 
+    init_train_loss, _ = evaluate(
+        model,
+        train_loader,
+        device,
+        condition_weights=condition_weights,
+        nw_threshold=nw_threshold,
+        nw_multiplier=nw_multiplier,
+        loss_mode=loss_mode,
+        non_blocking=non_blocking,
+    )
+    init_eval_loss, _ = evaluate(
+        model,
+        val_loader,
+        device,
+        condition_weights=condition_weights,
+        nw_threshold=nw_threshold,
+        nw_multiplier=nw_multiplier,
+        loss_mode=loss_mode,
+        non_blocking=non_blocking,
+    )
+    train_losses.append(float(init_train_loss))
+    val_losses.append(float(init_eval_loss))
+
     preds = None
     eval_every = int(eval_every_n_batches) if eval_every_n_batches is not None else 0
     if eval_every < 1:
