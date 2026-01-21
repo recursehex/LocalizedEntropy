@@ -21,6 +21,7 @@ class TrainRunResult:
     model: torch.nn.Module
     train_losses: List[float]
     eval_losses: List[float]
+    eval_batch_losses: List[dict]
     eval_loss: float
     eval_preds: np.ndarray
     eval_logits: Optional[torch.Tensor]
@@ -154,8 +155,9 @@ def train_single_loss(
     eval_batch_callback: Optional[Callable[[np.ndarray, int, int], None]] = None,
     collect_eval_logits: bool = False,
     collect_grad_sq_sums: bool = False,
+    collect_eval_batch_losses: bool = False,
 ) -> TrainRunResult:
-    train_losses, eval_losses, grad_sq_sums = train_with_epoch_plots(
+    train_losses, eval_losses, grad_sq_sums, eval_batch_losses = train_with_epoch_plots(
         model=model,
         train_loader=train_loader,
         val_loader=train_eval_loader,
@@ -168,6 +170,7 @@ def train_single_loss(
         eval_callback=eval_callback,
         eval_every_n_batches=eval_every_n_batches,
         eval_batch_callback=eval_batch_callback,
+        track_eval_batch_losses=collect_eval_batch_losses,
         track_grad_sq_sums=collect_grad_sq_sums,
     )
     eval_loss, eval_preds = evaluate_or_predict(
@@ -189,6 +192,7 @@ def train_single_loss(
         model=model,
         train_losses=train_losses,
         eval_losses=eval_losses,
+        eval_batch_losses=eval_batch_losses,
         eval_loss=float(eval_loss),
         eval_preds=eval_preds,
         eval_logits=eval_logits,

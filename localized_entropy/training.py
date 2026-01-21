@@ -134,8 +134,9 @@ def train_with_epoch_plots(
     eval_callback: Optional[Callable[[np.ndarray, int], None]] = None,
     eval_every_n_batches: Optional[int] = None,
     eval_batch_callback: Optional[Callable[[np.ndarray, int, int], None]] = None,
+    track_eval_batch_losses: bool = False,
     track_grad_sq_sums: bool = False,
-) -> Tuple[List[float], List[float], Optional[np.ndarray]]:
+) -> Tuple[List[float], List[float], Optional[np.ndarray], List[dict]]:
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     train_losses: List[float] = []
     val_losses: List[float] = []
@@ -161,6 +162,8 @@ def train_with_epoch_plots(
     eval_every = int(eval_every_n_batches) if eval_every_n_batches is not None else 0
     if eval_every < 1:
         eval_every = 0
+    eval_batch_losses: List[dict] = []
+    eval_step = 0
     for epoch in range(1, epochs + 1):
         model.train()
         br_tracker = None
@@ -227,11 +230,11 @@ def train_with_epoch_plots(
             count += x.size(0)
             if (
                 eval_every
-                and eval_batch_callback is not None
+                and (eval_batch_callback is not None or track_eval_batch_losses)
                 and (batch_idx % eval_every == 0)
                 and (total_batches is None or batch_idx < total_batches)
             ):
-                _, mid_preds = evaluate(
+                mid_loss, mid_preds = evaluate(
                     model, val_loader, device,
                     condition_weights=condition_weights,
                     nw_threshold=nw_threshold,
@@ -239,7 +242,28 @@ def train_with_epoch_plots(
                     loss_mode=loss_mode,
                     non_blocking=non_blocking,
                 )
-                eval_batch_callback(mid_preds, epoch, batch_idx)
+                if eval_batch_callback is not None:
+                    eval_batch_callback(mid_preds, epoch, batch_idx)
+                if track_eval_batch_losses:
+                    eval_step += 1
+                    step = (
+                        (epoch - 1) * total_batches + batch_idx
+                        if total_batches is not None
+                        else eval_step
+                    )
+                    epoch_progress = None
+                    if total_batches:
+                        epoch_progress = (epoch - 1) + (batch_idx / total_batches)
+                    eval_batch_losses.append(
+                        {
+                            "epoch": int(epoch),
+                            "batch_idx": int(batch_idx),
+                            "step": int(step),
+                            "epoch_progress": epoch_progress,
+                            "train_loss": float(running / max(1, count)),
+                            "loss": float(mid_loss),
+                        }
+                    )
                 model.train()
         if device.type == "cuda":
             torch.cuda.synchronize(device)
@@ -272,4 +296,4 @@ def train_with_epoch_plots(
     print(f"Final Train {loss_label}: {train_losses[-1]:.10f}")
     print(f"Final Eval  {loss_label}: {val_losses[-1]:.10f}")
     grad_sq_sums_np = grad_sq_sums.detach().cpu().numpy() if grad_sq_sums is not None else None
-    return train_losses, val_losses, grad_sq_sums_np
+    return train_losses, val_losses, grad_sq_sums_np, eval_batch_losses

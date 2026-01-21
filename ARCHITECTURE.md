@@ -18,6 +18,7 @@ Step-by-step pipeline:
 1) Load config + set seed and device
 - Uses `localized_entropy/config.py` to load and resolve
   `configs/default.json`.
+- Applies `training.by_source` overrides based on `data.source`.
 - Chooses CUDA vs CPU via `localized_entropy/utils.py`.
 
 2) Optional CTR filtering + caching (config-driven)
@@ -79,6 +80,8 @@ Step-by-step pipeline:
   - BCE (`torch.nn.BCEWithLogitsLoss`).
 - For LE, a streaming per-condition base rate is updated each batch.
 - Optional mid-epoch eval callbacks can plot prediction histograms.
+- When `training.eval_every_n_batches > 0`, train/eval loss is tracked by
+  batch for additional diagnostics in the loss curve plot.
 - When `plots.grad_sq_by_condition=true`, the loop also accumulates
   per-condition sum of squared logits gradients for BCE vs LE.
 - If `training.loss_mode` is set to `both`, the notebook trains BCE and
@@ -175,6 +178,7 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
   - Feature distributions by condition.
   - Prediction histograms (log10 p).
   - Loss curves.
+  - Eval loss by batch (when mid-epoch eval is enabled).
   - Per-condition LE diagnostics.
   - Per-condition F1 log10 histogram.
   - Table plots for BCE vs LE per-condition comparisons.

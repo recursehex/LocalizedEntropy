@@ -59,9 +59,12 @@ Template model definitions included in `configs/default.json`:
 - `training.loss_mode`: `localized_entropy`, `bce`, or `both` (train BCE
   and LE sequentially).
 - `training.eval_every_n_batches`: If > 0, run mid-epoch eval callbacks
-  at that interval.
+  at that interval and record train/eval loss by batch in the loss curve.
 - `training.eval_compare_losses`: List of loss modes to evaluate after
   training for comparison (ignored when `loss_mode` is `both`).
+- `training.by_source`: Optional per-dataset overrides keyed by
+  `data.source` (`ctr` or `synthetic`). Values in this block override
+  the top-level training fields after experiment resolution.
 
 Example:
 
@@ -69,7 +72,17 @@ Example:
 "training": {
   "loss_mode": "localized_entropy",
   "eval_compare_losses": ["localized_entropy", "bce"],
-  "eval_every_n_batches": 200
+  "eval_every_n_batches": 200,
+  "by_source": {
+    "ctr": {
+      "epochs": 2,
+      "batch_size": 10000
+    },
+    "synthetic": {
+      "epochs": 5,
+      "batch_size": 50000
+    }
+  }
 }
 ```
 

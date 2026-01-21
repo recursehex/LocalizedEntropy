@@ -37,8 +37,25 @@ def resolve_experiment(config: Dict[str, Any]) -> Dict[str, Any]:
     return cfg
 
 
+def apply_training_source_overrides(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    training_cfg = cfg.get("training")
+    if not isinstance(training_cfg, dict):
+        return cfg
+    by_source = training_cfg.get("by_source")
+    if not isinstance(by_source, dict):
+        return cfg
+    source = get_data_source(cfg)
+    overrides = by_source.get(source)
+    if not isinstance(overrides, dict):
+        return cfg
+    resolved_training = _deep_update(deepcopy(training_cfg), overrides)
+    cfg["training"] = resolved_training
+    return cfg
+
+
 def load_and_resolve(path: str) -> Dict[str, Any]:
-    return resolve_experiment(load_config(path))
+    cfg = resolve_experiment(load_config(path))
+    return apply_training_source_overrides(cfg)
 
 
 def get_data_source(cfg: Dict[str, Any]) -> str:

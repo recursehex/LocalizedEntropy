@@ -112,11 +112,42 @@ def plot_loss_curves(
     eval_losses,
     loss_label: str,
     *,
+    eval_batch_losses=None,
     output_path: Optional[Union[str, Path]] = None,
 ) -> None:
     plt.figure(figsize=(8, 5))
-    plt.plot(train_losses, label=f"Train {loss_label}")
-    plt.plot(eval_losses, label=f"Eval {loss_label}")
+    epochs = np.arange(1, len(train_losses) + 1)
+    plt.plot(epochs, train_losses, label=f"Train {loss_label}")
+    plt.plot(epochs, eval_losses, label=f"Eval {loss_label}")
+    if eval_batch_losses:
+        batch_x = []
+        batch_eval = []
+        batch_train = []
+        for idx, item in enumerate(eval_batch_losses, start=1):
+            x_val = item.get("epoch_progress") or item.get("epoch") or idx
+            batch_x.append(x_val)
+            batch_eval.append(float(item.get("loss", float("nan"))))
+            batch_train.append(float(item.get("train_loss", float("nan"))))
+        plt.plot(
+            batch_x,
+            batch_train,
+            label=f"Train {loss_label} (batch)",
+            linestyle="--",
+            marker="o",
+            markersize=3,
+            linewidth=1.0,
+            alpha=0.7,
+        )
+        plt.plot(
+            batch_x,
+            batch_eval,
+            label=f"Eval {loss_label} (batch)",
+            linestyle="--",
+            marker="o",
+            markersize=3,
+            linewidth=1.0,
+            alpha=0.7,
+        )
     plt.xlabel("Epoch")
     plt.ylabel(f"{loss_label} Loss")
     plt.title(f"Training vs Evaluation {loss_label} over Epochs")
