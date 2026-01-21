@@ -67,6 +67,7 @@ def _build_loader_with_fallback(dataset: Dataset, *, shuffle: bool, role: str, l
         return _instantiate_loader(dataset, shuffle=shuffle, loader_common=loader_common, worker_kwargs={})
     test_iter = None
     try:
+        # Probe a worker-backed loader to catch multiprocessing issues early.
         test_loader = _instantiate_loader(dataset, shuffle=shuffle, loader_common=loader_common, worker_kwargs=worker_kwargs)
         test_iter = iter(test_loader)
         next(test_iter)
@@ -103,6 +104,7 @@ def _balance_indices_by_condition(
         cond_idx = np.flatnonzero(c == cond_id)
         if cond_idx.size == 0:
             continue
+        # Downsample each condition to the smallest non-zero count.
         if cond_idx.size > min_count:
             cond_idx = rng.choice(cond_idx, size=min_count, replace=False)
         keep_idx.append(cond_idx)
@@ -126,6 +128,7 @@ def build_dataloaders(
 
     use_tensor_loader = use_cuda and move_dataset_to_cuda
     if use_tensor_loader:
+        # Stage datasets on the GPU to avoid per-batch host-to-device copies.
         print("Staging datasets directly on CUDA for batch sampling.")
         train_tensors = (
             torch.as_tensor(splits.x_train, dtype=torch.float32, device=device),
@@ -187,6 +190,7 @@ def build_dataloaders(
     loader_common = dict(batch_size=batch_size, drop_last=False, pin_memory=use_cuda)
     max_workers = os.cpu_count() or 1
     env_override = os.environ.get(env_var)
+    # Decide on worker count from config/env, defaulting to single-process in notebooks.
     if allow_dataloader_workers is None:
         allow_workers = not is_notebook()
     else:
@@ -323,6 +327,7 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
     p_eval = probs[eval_idx] if probs is not None else None
 
     if balance_by_condition:
+        # Optionally downsample to equalize per-condition representation in training.
         balance_rng = np.random.default_rng(seed)
         keep_idx, min_count, counts = _balance_indices_by_condition(
             c_train,

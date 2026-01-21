@@ -72,6 +72,7 @@ class TensorBatchLoader:
         return 0
 
     def __iter__(self):
+        # Build indices on the same device as tensors to avoid host/device sync.
         indices = torch.arange(self.length, device=self.device, dtype=torch.long)
         if self.shuffle:
             indices = indices[torch.randperm(self.length, device=self.device)]

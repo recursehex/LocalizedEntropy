@@ -170,6 +170,7 @@ def roc_auc_score(preds: np.ndarray, labels: np.ndarray) -> float:
         j = i
         while j + 1 < n and p_sorted[j + 1] == p_sorted[i]:
             j += 1
+        # Assign average ranks to tied prediction scores.
         avg_rank = 0.5 * (rank + rank + (j - i))
         ranks[i:j + 1] = avg_rank
         rank += (j - i + 1)
@@ -261,6 +262,7 @@ def expected_calibration_error(
 
     rows = []
     total = p.size
+    # Compute weighted average of per-bin calibration gaps.
     ece = 0.0
     for b in range(bins):
         mask = bin_ids == b
@@ -319,6 +321,7 @@ def per_condition_metrics(
         bce = bce_log_loss(p_c, y_c)
         cls_metrics = binary_classification_metrics(p_c, y_c, threshold=threshold)
         ece, _ = expected_calibration_error(p_c, y_c, bins=bins, min_count=min_count)
+        # Track calibration on low-probability predictions separately.
         small_mask = p_c <= small_prob_max
         if small_mask.any():
             ece_small, _ = expected_calibration_error(

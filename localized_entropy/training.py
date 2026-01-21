@@ -35,6 +35,7 @@ def evaluate(
         y = y.to(device, non_blocking=non_blocking)
         nw = nw.to(device, non_blocking=non_blocking)
         logits = model(x, x_cat, c)
+        # Guard against inadvertently running evaluation on CPU when CUDA is expected.
         if (device.type == "cuda") and (not verified_cuda_batch):
             tensors = (x, x_cat, c, y, nw, logits)
             if any(t.device.type != "cuda" for t in tensors):
@@ -151,6 +152,7 @@ def train_with_epoch_plots(
             num_conds = int(emb_layer.num_embeddings)
         else:
             raise ValueError("Gradient tracking requires a model with an embedding layer.")
+        # Accumulate per-condition gradient squared sums on logits for diagnostics.
         grad_sq_sums = torch.zeros(num_conds, dtype=torch.float64, device=device)
     if device.type == "cuda":
         first_param = next(model.parameters(), None)
@@ -191,6 +193,7 @@ def train_with_epoch_plots(
         model.train()
         br_tracker = None
         if use_le:
+            # Track per-condition base rates within the epoch for LE denominator terms.
             num_conds_model = getattr(model, "embedding").num_embeddings if hasattr(model, "embedding") else 1
             first_param = next(model.parameters(), None)
             p_dtype = first_param.dtype if first_param is not None else torch.float32
@@ -238,6 +241,7 @@ def train_with_epoch_plots(
                 grad = logits.grad
                 if grad is None:
                     raise RuntimeError("Expected logits gradients for grad tracking.")
+                # Aggregate squared gradients by condition for BCE vs LE diagnostics.
                 grad_sq = grad.detach().view(-1).to(torch.float64)
                 c_flat = c.view(-1).to(torch.long)
                 if grad_sq.numel() != c_flat.numel():
@@ -257,6 +261,7 @@ def train_with_epoch_plots(
                 and (batch_idx % eval_every == 0)
                 and (total_batches is None or batch_idx < total_batches)
             ):
+                # Mid-epoch evals support batch-level plots and loss curve diagnostics.
                 mid_loss, mid_preds = evaluate(
                     model, val_loader, device,
                     condition_weights=condition_weights,

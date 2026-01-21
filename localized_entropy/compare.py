@@ -43,6 +43,7 @@ def build_comparison_frame(
     bce_le = le_stats_to_frame(bce_le_stats).rename(columns={"le_ratio": "bce_le_ratio"})
     le_le = le_stats_to_frame(le_le_stats).rename(columns={"le_ratio": "le_le_ratio"})
 
+    # Merge per-condition calibration stats and LE ratios for side-by-side comparison.
     merged = bce_cal.merge(
         le_cal[["condition", "le_pred_mean", "le_calibration"]],
         on="condition",
@@ -320,6 +321,7 @@ def _safe_wilcoxon(
     alternative: str = "two-sided",
 ) -> Tuple[float, float]:
     try:
+        # SciPy's wilcoxon signature varies across versions; handle both.
         stat, p_value = wilcoxon(x, y, zero_method=zero_method, alternative=alternative)
     except TypeError:
         stat, p_value = wilcoxon(x, y, zero_method=zero_method)
@@ -489,6 +491,7 @@ def build_per_condition_calibration_wilcoxon(
     num_conditions = int(conds.max()) + 1
     counts = np.bincount(conds, minlength=num_conditions)
     label_sum = np.bincount(conds, weights=labels, minlength=num_conditions)
+    # Base rates serve as the per-condition target for calibration gaps.
     base_rate = label_sum / np.maximum(counts, 1)
 
     bce_gaps = []

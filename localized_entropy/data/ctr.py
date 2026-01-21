@@ -25,6 +25,7 @@ def _extract_hour_parts(series: pd.Series) -> Tuple[pd.Series, pd.Series]:
 def _add_derived_time_features(df: pd.DataFrame, hour_col: str = "hour") -> None:
     if hour_col not in df.columns:
         return
+    # Split hour into hour-of-day and day-of-week categorical features.
     date_str, hh_str = _extract_hour_parts(df[hour_col])
     df[hour_col] = pd.to_numeric(hh_str, errors="coerce").fillna(0).astype(int)
     dates = pd.to_datetime(date_str, format="%y%m%d", errors="coerce")
@@ -49,6 +50,7 @@ def _add_device_counters(
 ) -> None:
     if device_ip_col not in train_df.columns or device_id_col not in train_df.columns:
         return
+    # Count device IDs in train and apply the same counts to test for consistency.
     ip_counts = train_df[device_ip_col].value_counts()
     id_counts = train_df[device_id_col].value_counts()
     train_df["device_ip_count"] = _cap_counts(

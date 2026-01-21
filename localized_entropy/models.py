@@ -128,6 +128,7 @@ class ConditionProbNet(nn.Module):
 
     def forward(self, x_num: torch.Tensor, x_cat: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
         emb = self.embedding(cond)
+        # Concatenate numeric features with condition + categorical embeddings before the MLP.
         parts = [x_num, emb]
         if self.cat_embeddings:
             cat_parts = [
