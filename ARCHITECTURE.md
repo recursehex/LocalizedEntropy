@@ -55,7 +55,8 @@ Step-by-step pipeline:
 - Feature stats, condition stats, and label stats are printed via
   `localized_entropy/analysis.py`.
 - If plots are enabled, the notebook produces pre-training
-  distribution plots from sampled data.
+  distribution plots from sampled data, skipping device count features
+  (`device_ip_count`, `device_id_count`) for CTR runs.
 
 5) Model construction
 - `localized_entropy/models.py` defines `ConditionProbNet`:
@@ -122,7 +123,8 @@ Step-by-step pipeline:
   the same diagnostics (without label-based metrics).
 
 13) Post-training data plots and LE stats
-- Optionally re-plot data distributions.
+- Optionally re-plot data distributions (CTR plots skip device count
+  features).
 - If labels are available, collects per-condition LE numerator/
   denominator stats and plots them.
 
@@ -181,7 +183,6 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
   - Loss curves.
   - Eval loss by batch (when mid-epoch eval is enabled).
   - Per-condition LE diagnostics.
-  - Per-condition F1 log10 histogram.
   - Table plots for BCE vs LE per-condition comparisons.
 - Outputs are shown inline in the notebook, and `localized_entropy.ipynb`
   now saves key plots plus text logs under `output/` via
