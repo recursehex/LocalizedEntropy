@@ -93,6 +93,7 @@
     "batch_size": 25000,
     "loss_mode": "localized_entropy",
     "eval_every_n_batches": 0,
+    "debug_gradients": false,
     "eval_compare_losses": [
       "localized_entropy",
       "bce"

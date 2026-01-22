@@ -143,6 +143,7 @@ def train_with_epoch_plots(
     eval_batch_callback: Optional[Callable[[np.ndarray, int, int], None]] = None,
     track_eval_batch_losses: bool = False,
     track_grad_sq_sums: bool = False,
+    debug_gradients: bool = False,
 ) -> Tuple[List[float], List[float], Optional[np.ndarray], List[dict]]:
     """Train a model while optionally collecting plots and diagnostics."""
     opt = torch.optim.Adam(model.parameters(), lr=lr)
@@ -259,6 +260,13 @@ def train_with_epoch_plots(
                     weights=grad_sq,
                     minlength=grad_sq_sums.numel(),
                 )
+            if debug_gradients:
+                print(f"[DEBUG] Gradients for epoch {epoch}, batch {batch_idx}")
+                for name, param in model.named_parameters():
+                    if param.grad is None:
+                        print(f"[DEBUG] {name}: grad=None")
+                    else:
+                        print(f"[DEBUG] {name}:\n{param.grad.detach()}")
             opt.step()
             running += float(loss.item()) * x.size(0)
             count += x.size(0)

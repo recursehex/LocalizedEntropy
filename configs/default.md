@@ -62,6 +62,8 @@ Template model definitions included in `configs/default.json`:
   at that interval and record train/eval loss by batch in the loss curve.
 - `training.eval_compare_losses`: List of loss modes to evaluate after
   training for comparison (ignored when `loss_mode` is `both`).
+- `training.debug_gradients`: If true, print raw per-parameter gradient
+  tensors every batch. Recommended batch size of 3. WARNING: this is extremely performance intensive and will generate massive output!
 - `training.by_source`: Optional per-dataset overrides keyed by
   `data.source` (`ctr` or `synthetic`). Values in this block override
   the top-level training fields after experiment resolution.

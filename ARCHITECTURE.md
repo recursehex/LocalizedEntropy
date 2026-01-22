@@ -86,6 +86,9 @@ Step-by-step pipeline:
 - Loss curves include an initial epoch/batch 0 train/eval loss before updates.
 - When `plots.grad_sq_by_condition=true`, the loop also accumulates
   per-condition sum of squared logits gradients for BCE vs LE.
+- The notebook can enable raw per-parameter gradient debug prints per
+  batch via the `debug_gradients` training flag (WARNING: extremely performance
+  intensive!).
 - If `training.loss_mode` is set to `both`, the notebook trains BCE and
   LE sequentially and stores results for comparison.
 
