@@ -19,6 +19,7 @@ def evaluate(
     nw_threshold: Optional[float] = None,
     nw_multiplier: float = 1.0,
     loss_mode: str = "localized_entropy",
+    base_rates: Optional[np.ndarray] = None,
     non_blocking: bool = False,
 ) -> Tuple[float, np.ndarray]:
     """Evaluate a model and return mean loss plus predictions."""
@@ -47,6 +48,10 @@ def evaluate(
                 logits=logits,
                 targets=y,
                 conditions=c,
+                base_rates=(
+                    torch.as_tensor(base_rates, device=logits.device, dtype=logits.dtype)
+                    if base_rates is not None else None
+                ),
                 net_worth=nw,
                 condition_weights=(
                     torch.as_tensor(condition_weights, device=logits.device, dtype=logits.dtype)
@@ -136,6 +141,8 @@ def train_with_epoch_plots(
     nw_threshold: Optional[float] = None,
     nw_multiplier: float = 1.0,
     loss_mode: str = "localized_entropy",
+    base_rates_train: Optional[np.ndarray] = None,
+    base_rates_eval: Optional[np.ndarray] = None,
     non_blocking: bool = False,
     plot_eval_hist_epochs: bool = False,
     eval_callback: Optional[Callable[[np.ndarray, int], None]] = None,
@@ -153,6 +160,11 @@ def train_with_epoch_plots(
     bce_loss = nn.BCEWithLogitsLoss()
     loss_label = "LE" if loss_mode == "localized_entropy" else "BCE"
     use_le = loss_mode == "localized_entropy"
+    base_rates_train_t = None
+    if use_le and base_rates_train is not None:
+        first_param = next(model.parameters(), None)
+        p_dtype = first_param.dtype if first_param is not None else torch.float32
+        base_rates_train_t = torch.as_tensor(base_rates_train, device=device, dtype=p_dtype)
     grad_sq_sums = None
     if track_grad_sq_sums:
         emb_layer = getattr(model, "embedding", None)
@@ -176,6 +188,7 @@ def train_with_epoch_plots(
         nw_threshold=nw_threshold,
         nw_multiplier=nw_multiplier,
         loss_mode=loss_mode,
+        base_rates=base_rates_train if use_le else None,
         non_blocking=non_blocking,
     )
     init_eval_loss, _ = evaluate(
@@ -186,6 +199,7 @@ def train_with_epoch_plots(
         nw_threshold=nw_threshold,
         nw_multiplier=nw_multiplier,
         loss_mode=loss_mode,
+        base_rates=base_rates_eval if use_le else None,
         non_blocking=non_blocking,
     )
     train_losses.append(float(init_train_loss))
@@ -200,7 +214,7 @@ def train_with_epoch_plots(
     for epoch in range(1, epochs + 1):
         model.train()
         br_tracker = None
-        if use_le:
+        if use_le and base_rates_train_t is None:
             # Track per-condition base rates within the epoch for LE denominator terms.
             num_conds_model = getattr(model, "embedding").num_embeddings if hasattr(model, "embedding") else 1
             first_param = next(model.parameters(), None)
@@ -227,12 +241,13 @@ def train_with_epoch_plots(
             if grad_sq_sums is not None:
                 logits.retain_grad()
             if use_le:
-                br_tracker.update(y, c)
+                if br_tracker is not None:
+                    br_tracker.update(y, c)
                 loss = localized_entropy(
                     logits=logits,
                     targets=y,
                     conditions=c,
-                    base_rates=br_tracker.rates(),
+                    base_rates=base_rates_train_t if base_rates_train_t is not None else br_tracker.rates(),
                     net_worth=nw,
                     condition_weights=(
                         torch.as_tensor(condition_weights, device=logits.device, dtype=logits.dtype)
@@ -283,6 +298,7 @@ def train_with_epoch_plots(
                     nw_threshold=nw_threshold,
                     nw_multiplier=nw_multiplier,
                     loss_mode=loss_mode,
+                    base_rates=base_rates_eval if use_le else None,
                     non_blocking=non_blocking,
                 )
                 if eval_batch_callback is not None:
@@ -317,6 +333,7 @@ def train_with_epoch_plots(
             nw_threshold=nw_threshold,
             nw_multiplier=nw_multiplier,
             loss_mode=loss_mode,
+            base_rates=base_rates_eval if use_le else None,
             non_blocking=non_blocking,
         )
         if plot_eval_hist_epochs and preds is not None:

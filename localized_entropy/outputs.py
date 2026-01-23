@@ -90,6 +90,7 @@ def build_output_paths(
         "pred_to_train_rate": base / "avg.png",
         "loss_curves": base / "loss.png",
         "post_training_eval_predictions": base / "preds.png",
+        "calibration_ratio": base / "calibration.png",
         "notebook_output": base / "notebook_output.txt",
     }
 

@@ -121,6 +121,7 @@ def evaluate_or_predict(
     device: torch.device,
     loss_mode: str,
     eval_has_labels: bool,
+    base_rates: Optional[np.ndarray] = None,
     non_blocking: bool = False,
 ) -> Tuple[float, np.ndarray]:
     """Run eval loss if labels exist, otherwise return predictions only."""
@@ -130,6 +131,7 @@ def evaluate_or_predict(
             eval_loader,
             device,
             loss_mode=loss_mode,
+            base_rates=base_rates,
             non_blocking=non_blocking,
         )
     preds = predict_probs(
@@ -152,6 +154,9 @@ def train_single_loss(
     epochs: int,
     lr: float,
     eval_has_labels: bool,
+    le_base_rates_train: Optional[np.ndarray] = None,
+    le_base_rates_train_eval: Optional[np.ndarray] = None,
+    le_base_rates_eval: Optional[np.ndarray] = None,
     non_blocking: bool = False,
     plot_eval_hist_epochs: bool = False,
     eval_callback: Optional[Callable[[np.ndarray, int], None]] = None,
@@ -171,6 +176,8 @@ def train_single_loss(
         epochs=int(epochs),
         lr=float(lr),
         loss_mode=loss_mode,
+        base_rates_train=le_base_rates_train,
+        base_rates_eval=le_base_rates_train_eval,
         non_blocking=non_blocking,
         plot_eval_hist_epochs=plot_eval_hist_epochs,
         eval_callback=eval_callback,
@@ -186,6 +193,7 @@ def train_single_loss(
         device,
         loss_mode=loss_mode,
         eval_has_labels=eval_has_labels,
+        base_rates=le_base_rates_eval,
         non_blocking=non_blocking,
     )
     eval_logits = eval_targets = eval_conds = None
@@ -229,6 +237,9 @@ def run_repeated_loss_experiments(
     use_cuda: bool,
     eval_has_labels: bool,
     seeds: Iterable[int],
+    le_base_rates_train: Optional[np.ndarray] = None,
+    le_base_rates_train_eval: Optional[np.ndarray] = None,
+    le_base_rates_eval: Optional[np.ndarray] = None,
     non_blocking: bool = False,
     collect_eval_logits: bool = False,
 ) -> Dict[str, List[TrainRunResult]]:
@@ -249,6 +260,9 @@ def run_repeated_loss_experiments(
                 epochs=train_cfg["epochs"],
                 lr=train_cfg["lr"],
                 eval_has_labels=eval_has_labels,
+                le_base_rates_train=le_base_rates_train,
+                le_base_rates_train_eval=le_base_rates_train_eval,
+                le_base_rates_eval=le_base_rates_eval,
                 non_blocking=non_blocking,
                 plot_eval_hist_epochs=False,
                 eval_callback=None,

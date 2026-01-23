@@ -206,6 +206,45 @@ def plot_eval_predictions_by_condition(
     )
 
 
+def plot_calibration_ratio_by_condition(
+    base_rates: np.ndarray,
+    calibration: np.ndarray,
+    *,
+    name: str = "Eval",
+    condition_label: str = "Condition",
+    title: Optional[str] = None,
+    output_path: Optional[Union[str, Path]] = None,
+) -> None:
+    """Plot calibration ratio by condition base rate."""
+    rates = np.asarray(base_rates, dtype=np.float64).reshape(-1)
+    ratios = np.asarray(calibration, dtype=np.float64).reshape(-1)
+    mask = np.isfinite(rates) & np.isfinite(ratios) & (rates > 0)
+    if not mask.any():
+        print("[WARN] No finite calibration ratios available; skipping calibration plot.")
+        return
+    x = rates[mask]
+    y = ratios[mask]
+    order = np.argsort(x)
+    x = x[order]
+    y = y[order]
+    if title is None:
+        title = f"{name} Calibration Ratio by {condition_label}"
+    plt.figure(figsize=(8, 5))
+    plt.plot(x, y, marker="o", linestyle="-", color="#4477aa", alpha=0.9)
+    plt.axhline(1.0, color="#cc6677", linestyle="--", linewidth=1.0)
+    plt.xscale("log")
+    plt.title(title)
+    plt.xlabel(f"{condition_label} base rate")
+    plt.ylabel("Calibration ratio (pred_mean / base_rate)")
+    plt.grid(True, alpha=0.3, which="both")
+    plt.tight_layout()
+    if output_path:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(out_path, dpi=200)
+    plt.show()
+
+
 def plot_feature_distributions_by_condition(
     xnum: np.ndarray,
     conds: np.ndarray,

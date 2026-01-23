@@ -209,6 +209,27 @@ These settings are used when `data.source` is `synthetic`.
   Samples per condition.
 - `synthetic.num_numeric_features`: Number of numeric features to emit
   (>= 2).
+- `synthetic.condition_mode`: `random` (default) or `uniform_mean`.
+  - `random`: each condition samples its own shape parameters.
+  - `uniform_mean`: conditions share one sampled shape and are rescaled
+    to a target mean probability per condition.
+- `synthetic.uniform_mean_log10_range`: Log10 range for mean
+  probabilities used when `condition_mode=uniform_mean`
+  (evenly spaced across conditions).
+- `synthetic.uniform_log10_band_fraction`: Width of the per-condition
+  log10 band as a fraction of the spacing between mean targets. Values
+  below 1.0 ensure non-overlapping ranges; values above 1.0 overlap.
+  Set to 0 to disable banding (unbounded spread) for `uniform_log10_shape=normal`.
+- `synthetic.uniform_log10_shape`: Shape mode for uniform-mean
+  distributions. `normal` samples a truncated log10-normal curve with a
+  band centered on the solved mean; `rank_normal` maps ranked
+  probabilities to a log10 normal curve; `scaled` preserves the
+  original shape with rescaling.
+- `synthetic.uniform_log10_sigma_fraction`: Fraction of band width used
+  as the log10 standard deviation when `uniform_log10_shape=rank_normal`.
+- `synthetic.use_true_base_rates_for_le`: If true, LE denominators use
+  per-condition mean probabilities (from synthetic `probs`) instead of
+  label-derived rates to avoid zero-positive collapse at very low means.
 - `synthetic.base_mu_ln` / `synthetic.base_sigma_ln`: Lognormal base for
   net worth.
 - `synthetic.sigmoid_mu_range` / `synthetic.sigmoid_s_range`: Sigmoid
@@ -216,6 +237,9 @@ These settings are used when `data.source` is `synthetic`.
 - `synthetic.age_mu_range` / `synthetic.age_sigma_range`: Age response
   parameters (range + steps).
 - `synthetic.interest_scale_log10_range`: Log10 scale for interest curve.
+  (used in `condition_mode=random`).
+- To fix the synthetic shape across conditions, set the range triplets to
+  `[value, value, 1]` so only one parameter value is sampled.
 - `synthetic.age_min` / `synthetic.age_max`: Age bounds.
 - `synthetic.extra_feature_dist`: Mean/std for extra noise features.
 
@@ -237,6 +261,8 @@ Example: small synthetic dataset with 4 conditions and 3 features:
 - `plots.loss_curves`: Plot train/eval loss curves.
 - `plots.eval_pred_hist`: Plot log10(p) histogram after training.
 - `plots.eval_pred_by_condition`: Plot per-condition predictions.
+- `plots.eval_calibration_ratio`: Plot calibration ratio vs condition
+  base rate after training.
 - `plots.eval_pred_value_range`: Log10(p) plot range as [min, max].
 - `plots.le_stats`: Plot LE numerator/denominator stats per condition.
 - `plots.grad_sq_by_condition`: Track and plot per-condition gradient

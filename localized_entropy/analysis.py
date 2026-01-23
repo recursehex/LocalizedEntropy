@@ -398,6 +398,64 @@ def per_condition_calibration(
     return df.sort_values("count", ascending=False)
 
 
+def per_condition_mean(
+    values: Optional[np.ndarray],
+    conds: Optional[np.ndarray],
+    num_conditions: int,
+) -> Optional[np.ndarray]:
+    """Compute per-condition mean for a value array."""
+    if values is None or conds is None:
+        return None
+    v = np.asarray(values, dtype=np.float64).reshape(-1)
+    c = np.asarray(conds, dtype=np.int64).reshape(-1)
+    if c.size == 0:
+        return np.zeros(int(num_conditions), dtype=np.float64)
+    counts = np.bincount(c, minlength=int(num_conditions))
+    sums = np.bincount(c, weights=v, minlength=int(num_conditions))
+    return sums / np.maximum(counts, 1)
+
+
+def per_condition_calibration_from_base_rates(
+    preds: np.ndarray,
+    conds: np.ndarray,
+    base_rates: np.ndarray,
+    eps: float = 1e-12,
+) -> pd.DataFrame:
+    """Compute calibration ratios using externally supplied base rates."""
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    c = np.asarray(conds, dtype=np.int64).reshape(-1)
+    if c.size == 0:
+        return pd.DataFrame(
+            columns=["condition", "count", "base_rate", "pred_mean", "calibration"]
+        )
+    max_id = int(c.max())
+    counts = np.bincount(c, minlength=max_id + 1)
+    pred_sum = np.bincount(c, weights=p, minlength=max_id + 1)
+    denom = np.maximum(counts, 1)
+    pred_mean = pred_sum / denom
+    base_rates = np.asarray(base_rates, dtype=np.float64).reshape(-1)
+    if base_rates.size <= max_id:
+        padded = np.full(max_id + 1, np.nan, dtype=np.float64)
+        padded[:base_rates.size] = base_rates
+        base_rates = padded
+    calibration = np.divide(
+        pred_mean,
+        base_rates,
+        out=np.full_like(pred_mean, np.nan, dtype=np.float64),
+        where=base_rates > eps,
+    )
+    df = pd.DataFrame(
+        {
+            "condition": np.arange(max_id + 1, dtype=np.int64),
+            "count": counts.astype(np.int64),
+            "base_rate": base_rates[: max_id + 1],
+            "pred_mean": pred_mean,
+            "calibration": calibration,
+        }
+    )
+    return df.sort_values("count", ascending=False)
+
+
 def le_stats_to_frame(stats: dict) -> pd.DataFrame:
     """Convert LE stats dict into a DataFrame."""
     rows = []

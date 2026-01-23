@@ -195,35 +195,44 @@
   },
   "synthetic": {
     "num_conditions": 6,
-    "min_samples_per_condition": 200000,
-    "max_samples_per_condition": 200000,
+    "min_samples_per_condition": 1000000,
+    "max_samples_per_condition": 1000000,
     "num_numeric_features": 2,
+    "condition_mode": "uniform_mean",
+    "uniform_mean_log10_range": [
+      -1.0,
+      -6.0
+    ],
+    "uniform_log10_band_fraction": 0.0,
+    "uniform_log10_shape": "normal",
+    "uniform_log10_sigma_fraction": 0.5,
+    "use_true_base_rates_for_le": true,
     "base_mu_ln": 10.0,
     "base_sigma_ln": 1.5,
     "sigmoid_mu_range": [
-      5.0,
-      7.0,
-      50
+      6.0,
+      6.0,
+      1
     ],
     "sigmoid_s_range": [
-      0.2,
-      0.3,
-      50
+      0.25,
+      0.25,
+      1
     ],
     "age_mu_range": [
-      30.0,
-      70.0,
-      50
+      50.0,
+      50.0,
+      1
     ],
     "age_sigma_range": [
-      10.0,
-      30.0,
-      50
+      20.0,
+      20.0,
+      1
     ],
     "interest_scale_log10_range": [
       0.0,
-      0.001,
-      50
+      0.0,
+      1
     ],
     "age_min": 10,
     "age_max": 100,
@@ -239,6 +248,7 @@
     "loss_curves": true,
     "eval_pred_hist": true,
     "eval_pred_by_condition": true,
+    "eval_calibration_ratio": true,
     "eval_pred_value_range": [
       -12,
       0
