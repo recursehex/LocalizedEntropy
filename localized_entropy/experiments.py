@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from localized_entropy.analysis import collect_logits
 from localized_entropy.config import get_data_source, loss_label
 from localized_entropy.models import ConditionProbNet
-from localized_entropy.training import evaluate, predict_probs, train_with_epoch_plots
+from localized_entropy.training import GradSqStats, evaluate, predict_probs, train_with_epoch_plots
 from localized_entropy.utils import set_seed
 
 
@@ -27,7 +27,7 @@ class TrainRunResult:
     eval_logits: Optional[torch.Tensor]
     eval_targets: Optional[torch.Tensor]
     eval_conds: Optional[torch.Tensor]
-    grad_sq_sum_per_condition: Optional[np.ndarray]
+    grad_sq_stats: Optional[GradSqStats]
 
 
 def build_model(cfg: dict, splits, device: torch.device) -> ConditionProbNet:
@@ -168,7 +168,7 @@ def train_single_loss(
     debug_gradients: bool = False,
 ) -> TrainRunResult:
     """Train one model/loss mode and collect evaluation outputs."""
-    train_losses, eval_losses, grad_sq_sums, eval_batch_losses = train_with_epoch_plots(
+    train_losses, eval_losses, grad_sq_stats, eval_batch_losses = train_with_epoch_plots(
         model=model,
         train_loader=train_loader,
         val_loader=train_eval_loader,
@@ -213,7 +213,7 @@ def train_single_loss(
         eval_logits=eval_logits,
         eval_targets=eval_targets,
         eval_conds=eval_conds,
-        grad_sq_sum_per_condition=grad_sq_sums,
+        grad_sq_stats=grad_sq_stats,
     )
 
 

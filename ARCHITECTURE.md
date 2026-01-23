@@ -85,7 +85,9 @@ Step-by-step pipeline:
   batch for additional diagnostics in the loss curve plot.
 - Loss curves include an initial epoch/batch 0 train/eval loss before updates.
 - When `plots.grad_sq_by_condition=true`, the loop also accumulates
-  per-condition sum of squared logits gradients for BCE vs LE.
+  per-condition mean-squared logits gradients for BCE vs LE, plus
+  per-class (label 0/1) gradient MSE to report a class MSE ratio.
+  The notebook prints a per-condition LE/BCE gradient MSE ratio table.
 - The notebook can enable raw per-parameter gradient debug prints per
   batch via the `debug_gradients` training flag (WARNING: extremely performance
   intensive!).
@@ -105,7 +107,8 @@ Step-by-step pipeline:
 - If both losses are trained, the notebook builds a per-condition
   comparison table (calibration ratio + LE ratio deltas) using
   `localized_entropy/compare.py`, printing an aligned text table plus a
-  BCE-vs-LE summary (accuracy, logloss, brier, ECE).
+  BCE-vs-LE summary (accuracy, logloss, brier, ECE) and a per-condition
+  abs(1 - calibration) table for quick closeness-to-1 checks.
 
 10) Optional repeated-run significance testing
 - When `repeats.enabled=true`, the notebook re-trains BCE/LE across

@@ -358,18 +358,18 @@ def plot_grad_sq_sums_by_condition(
     le_sums: Optional[np.ndarray],
     *,
     condition_label: str,
-    title: str = "Gradient sum of squares per condition",
+    title: str = "Gradient mean square per condition",
     top_k: int = 0,
     log10: bool = True,
 ) -> None:
-    """Plot per-condition gradient sum of squares for BCE vs LE."""
+    """Plot per-condition gradient mean-square values for BCE vs LE."""
     if bce_sums is None and le_sums is None:
         print("[WARN] No gradient stats available; skipping grad plot.")
         return
     bce_vals = np.asarray(bce_sums, dtype=np.float64).reshape(-1) if bce_sums is not None else None
     le_vals = np.asarray(le_sums, dtype=np.float64).reshape(-1) if le_sums is not None else None
     if (bce_vals is not None) and (le_vals is not None) and (bce_vals.size != le_vals.size):
-        print("[WARN] Grad sum arrays have different sizes; skipping grad plot.")
+        print("[WARN] Grad arrays have different sizes; skipping grad plot.")
         return
     num_conditions = int(bce_vals.size if bce_vals is not None else le_vals.size)
     cond_ids = np.arange(num_conditions)
@@ -410,7 +410,7 @@ def plot_grad_sq_sums_by_condition(
         ax.legend()
     ax.set_title(title)
     ax.set_xlabel(condition_label)
-    y_label = "log10(sum grad^2)" if log10 else "sum grad^2"
+    y_label = "log10(mean grad^2)" if log10 else "mean grad^2"
     ax.set_ylabel(y_label)
     if len(cond_ids) > 20:
         ax.set_xticks(x, cond_ids, rotation=90)

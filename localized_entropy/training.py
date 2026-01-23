@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
 import time
@@ -8,6 +9,17 @@ from torch.utils.data import DataLoader
 
 from localized_entropy.losses import localized_entropy
 from localized_entropy.plotting import plot_eval_log10p_hist
+
+
+@dataclass
+class GradSqStats:
+    """Per-condition and per-class gradient mean-square stats."""
+    sum_by_condition: np.ndarray
+    mean_by_condition: np.ndarray
+    count_by_condition: np.ndarray
+    class_mse: np.ndarray
+    class_counts: np.ndarray
+    class_ratio: float
 
 
 @torch.no_grad()
@@ -151,7 +163,7 @@ def train_with_epoch_plots(
     track_eval_batch_losses: bool = False,
     track_grad_sq_sums: bool = False,
     debug_gradients: bool = False,
-) -> Tuple[List[float], List[float], Optional[np.ndarray], List[dict]]:
+) -> Tuple[List[float], List[float], Optional[GradSqStats], List[dict]]:
     """Train a model while optionally collecting plots and diagnostics."""
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     train_losses: List[float] = []
@@ -166,14 +178,20 @@ def train_with_epoch_plots(
         p_dtype = first_param.dtype if first_param is not None else torch.float32
         base_rates_train_t = torch.as_tensor(base_rates_train, device=device, dtype=p_dtype)
     grad_sq_sums = None
+    grad_sq_counts = None
+    grad_sq_class_sums = None
+    grad_sq_class_counts = None
     if track_grad_sq_sums:
         emb_layer = getattr(model, "embedding", None)
         if isinstance(emb_layer, nn.Embedding):
             num_conds = int(emb_layer.num_embeddings)
         else:
             raise ValueError("Gradient tracking requires a model with an embedding layer.")
-        # Accumulate per-condition gradient squared sums on logits for diagnostics.
+        # Accumulate per-condition gradient squared sums and counts for MSE diagnostics.
         grad_sq_sums = torch.zeros(num_conds, dtype=torch.float64, device=device)
+        grad_sq_counts = torch.zeros(num_conds, dtype=torch.float64, device=device)
+        grad_sq_class_sums = torch.zeros(2, dtype=torch.float64, device=device)
+        grad_sq_class_counts = torch.zeros(2, dtype=torch.float64, device=device)
     if device.type == "cuda":
         first_param = next(model.parameters(), None)
         if (first_param is not None) and (first_param.device.type != "cuda"):
@@ -264,7 +282,7 @@ def train_with_epoch_plots(
                 grad = logits.grad
                 if grad is None:
                     raise RuntimeError("Expected logits gradients for grad tracking.")
-                # Aggregate squared gradients by condition for BCE vs LE diagnostics.
+                # Aggregate squared gradients and counts by condition/class for diagnostics.
                 grad_sq = grad.detach().view(-1).to(torch.float64)
                 c_flat = c.view(-1).to(torch.long)
                 if grad_sq.numel() != c_flat.numel():
@@ -275,6 +293,25 @@ def train_with_epoch_plots(
                     weights=grad_sq,
                     minlength=grad_sq_sums.numel(),
                 )
+                if grad_sq_counts is None:
+                    raise RuntimeError("Expected grad_sq_counts when tracking gradients.")
+                grad_sq_counts += torch.bincount(
+                    c_flat,
+                    minlength=grad_sq_counts.numel(),
+                ).to(torch.float64)
+                if grad_sq_class_sums is None or grad_sq_class_counts is None:
+                    raise RuntimeError("Expected grad_sq_class stats when tracking gradients.")
+                y_flat = y.view(-1)
+                y_int = (y_flat > 0.5).to(torch.long)
+                grad_sq_class_sums += torch.bincount(
+                    y_int,
+                    weights=grad_sq,
+                    minlength=2,
+                )
+                grad_sq_class_counts += torch.bincount(
+                    y_int,
+                    minlength=2,
+                ).to(torch.float64)
             if debug_gradients:
                 print(f"[DEBUG] Gradients for epoch {epoch}, batch {batch_idx}")
                 for name, param in model.named_parameters():
@@ -355,5 +392,38 @@ def train_with_epoch_plots(
 
     print(f"Final Train {loss_label}: {train_losses[-1]:.10f}")
     print(f"Final Eval  {loss_label}: {val_losses[-1]:.10f}")
-    grad_sq_sums_np = grad_sq_sums.detach().cpu().numpy() if grad_sq_sums is not None else None
-    return train_losses, val_losses, grad_sq_sums_np, eval_batch_losses
+    grad_sq_stats = None
+    if grad_sq_sums is not None:
+        if grad_sq_counts is None or grad_sq_class_sums is None or grad_sq_class_counts is None:
+            raise RuntimeError("Expected grad_sq stats to be populated when tracking gradients.")
+        grad_sq_sums_np = grad_sq_sums.detach().cpu().numpy()
+        grad_sq_counts_np = grad_sq_counts.detach().cpu().numpy()
+        grad_sq_means_np = np.divide(
+            grad_sq_sums_np,
+            grad_sq_counts_np,
+            out=np.zeros_like(grad_sq_sums_np),
+            where=grad_sq_counts_np > 0,
+        )
+        grad_sq_class_sums_np = grad_sq_class_sums.detach().cpu().numpy()
+        grad_sq_class_counts_np = grad_sq_class_counts.detach().cpu().numpy()
+        grad_sq_class_mse_np = np.divide(
+            grad_sq_class_sums_np,
+            grad_sq_class_counts_np,
+            out=np.full_like(grad_sq_class_sums_np, np.nan),
+            where=grad_sq_class_counts_np > 0,
+        )
+        class_ratio = float("nan")
+        if (
+            np.isfinite(grad_sq_class_mse_np).all()
+            and grad_sq_class_mse_np[1] != 0.0
+        ):
+            class_ratio = float(grad_sq_class_mse_np[0] / grad_sq_class_mse_np[1])
+        grad_sq_stats = GradSqStats(
+            sum_by_condition=grad_sq_sums_np,
+            mean_by_condition=grad_sq_means_np,
+            count_by_condition=grad_sq_counts_np,
+            class_mse=grad_sq_class_mse_np,
+            class_counts=grad_sq_class_counts_np,
+            class_ratio=class_ratio,
+        )
+    return train_losses, val_losses, grad_sq_stats, eval_batch_losses
