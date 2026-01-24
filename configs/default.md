@@ -145,7 +145,7 @@ These settings are used when `data.source` is `ctr`.
 - `ctr.device_counter_cap`: Cap for device counters.
 - `ctr.condition_col`: Condition column (e.g., ad id).
 - `ctr.label_col`: Label column (binary click).
-- `ctr.weight_col`: Optional weight column (stored as net_worth).
+- `ctr.weight_col`: Optional weight column (currently unused; reserved for future weighting).
 - `ctr.max_conditions`: Cap condition vocab; others map to a single id.
 - `ctr.filter`: Optional filtering block for selecting a subset of values.
   - `ctr.filter.enabled`: Enable filtering (default true if the block is set).

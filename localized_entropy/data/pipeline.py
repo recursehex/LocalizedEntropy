@@ -27,9 +27,6 @@ class DatasetSplits:
     c_train: np.ndarray
     c_eval: np.ndarray
     c_test: Optional[np.ndarray]
-    nw_train: np.ndarray
-    nw_eval: np.ndarray
-    nw_test: Optional[np.ndarray]
     p_train: Optional[np.ndarray]
     p_eval: Optional[np.ndarray]
     feature_names: list
@@ -144,14 +141,12 @@ def build_dataloaders(
             torch.as_tensor(splits.x_cat_train, dtype=torch.long, device=device),
             torch.as_tensor(splits.c_train, dtype=torch.long, device=device),
             torch.as_tensor(splits.y_train, dtype=torch.float32, device=device),
-            torch.as_tensor(splits.nw_train, dtype=torch.float32, device=device),
         )
         eval_tensors = (
             torch.as_tensor(splits.x_eval, dtype=torch.float32, device=device),
             torch.as_tensor(splits.x_cat_eval, dtype=torch.long, device=device),
             torch.as_tensor(splits.c_eval, dtype=torch.long, device=device),
             torch.as_tensor(splits.y_eval, dtype=torch.float32, device=device),
-            torch.as_tensor(splits.nw_eval, dtype=torch.float32, device=device),
         )
         train_loader = TensorBatchLoader(train_tensors, batch_size=batch_size, shuffle=True)
         eval_loader = TensorBatchLoader(eval_tensors, batch_size=batch_size, shuffle=False)
@@ -162,7 +157,6 @@ def build_dataloaders(
                 torch.as_tensor(splits.x_cat_test, dtype=torch.long, device=device),
                 torch.as_tensor(splits.c_test, dtype=torch.long, device=device),
                 torch.as_tensor(splits.y_test, dtype=torch.float32, device=device),
-                torch.as_tensor(splits.nw_test, dtype=torch.float32, device=device),
             )
             test_loader = TensorBatchLoader(test_tensors, batch_size=batch_size, shuffle=False)
         loader_note = (
@@ -176,14 +170,12 @@ def build_dataloaders(
         splits.x_train,
         splits.c_train,
         splits.y_train,
-        net_worth=splits.nw_train,
         x_cat=splits.x_cat_train,
     )
     eval_ds = ConditionDataset(
         splits.x_eval,
         splits.c_eval,
         splits.y_eval,
-        net_worth=splits.nw_eval,
         x_cat=splits.x_cat_eval,
     )
     test_ds = None
@@ -192,7 +184,6 @@ def build_dataloaders(
             splits.x_test,
             splits.c_test,
             splits.y_test,
-            net_worth=splits.nw_test,
             x_cat=splits.x_cat_test,
         )
 
@@ -269,12 +260,10 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
         xcat = arrays["xcat"]
         labels = arrays["labels"]
         conds = arrays["conds"]
-        net_worth = arrays["net_worth"]
         probs = arrays["probs"]
         xnum_test = arrays["xnum_test"]
         xcat_test = arrays["xcat_test"]
         conds_test = arrays["conds_test"]
-        net_worth_test = arrays["net_worth_test"]
         labels_test = arrays.get("labels_test")
         feature_names = arrays["feature_names"]
         num_conditions = arrays["num_conditions"]
@@ -300,18 +289,16 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
         feature_names = feature_payload["feature_names"]
         labels = dataset["labels"]
         conds = dataset["conds"]
-        net_worth = dataset["net_worth"]
         probs = dataset["probs"]
         xnum_test = None
         xcat = np.empty((len(labels), 0), dtype=np.int64)
         xcat_test = None
         conds_test = None
-        net_worth_test = None
         num_conditions = dataset["num_conditions"]
         cat_sizes = []
         cat_cols = []
         plot_data["synthetic"] = {
-            "net_worth": net_worth,
+            "net_worth": dataset["net_worth"],
             "ages": dataset["ages"],
             "probs": probs,
             "conds": conds,
@@ -331,8 +318,6 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
     c_eval = conds[eval_idx]
     y_train = labels[train_idx]
     y_eval = labels[eval_idx]
-    nw_train = net_worth[train_idx]
-    nw_eval = net_worth[eval_idx]
     p_train = probs[train_idx] if probs is not None else None
     p_eval = probs[eval_idx] if probs is not None else None
 
@@ -352,7 +337,6 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
             x_cat_train = x_cat_train[keep_idx]
             c_train = c_train[keep_idx]
             y_train = y_train[keep_idx]
-            nw_train = nw_train[keep_idx]
             p_train = _apply_indices(p_train, keep_idx)
             active_conditions = int((counts > 0).sum())
             print(
@@ -394,8 +378,6 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
             xcat_test = xcat_test[test_idx]
         if conds_test is not None:
             conds_test = conds_test[test_idx]
-        if net_worth_test is not None:
-            net_worth_test = net_worth_test[test_idx]
         if y_test is not None:
             y_test = y_test[test_idx]
 
@@ -420,9 +402,6 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
         c_train=c_train,
         c_eval=c_eval,
         c_test=conds_test,
-        nw_train=nw_train,
-        nw_eval=nw_eval,
-        nw_test=net_worth_test,
         p_train=p_train,
         p_eval=p_eval,
         feature_names=feature_names,

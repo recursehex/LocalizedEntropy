@@ -10,7 +10,6 @@ class ConditionDataset(Dataset):
         x_num,
         conds,
         labels,
-        net_worth=None,
         x_cat=None,
         share_memory: bool = False,
     ):
@@ -25,13 +24,8 @@ class ConditionDataset(Dataset):
         self.x_cat = x_cat
         self.c = torch.as_tensor(conds, dtype=torch.long).contiguous()
         self.y = torch.as_tensor(labels, dtype=torch.float32).contiguous()
-        if net_worth is None:
-            self.nw = torch.zeros(len(labels), dtype=torch.float32)
-        else:
-            assert len(net_worth) == len(labels)
-            self.nw = torch.as_tensor(net_worth, dtype=torch.float32).contiguous()
         if share_memory:
-            for tensor in (self.x, self.x_cat, self.c, self.y, self.nw):
+            for tensor in (self.x, self.x_cat, self.c, self.y):
                 if tensor.device.type == "cpu":
                     tensor.share_memory_()
 
@@ -46,7 +40,6 @@ class ConditionDataset(Dataset):
             self.x_cat[idx],
             self.c[idx],
             self.y[idx],
-            self.nw[idx],
         )
 
 

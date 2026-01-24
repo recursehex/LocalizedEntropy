@@ -50,8 +50,6 @@ def evaluate(
     loader: DataLoader,
     device: torch.device,
     condition_weights: Optional[np.ndarray] = None,
-    nw_threshold: Optional[float] = None,
-    nw_multiplier: float = 1.0,
     loss_mode: str = "localized_entropy",
     base_rates: Optional[np.ndarray] = None,
     non_blocking: bool = False,
@@ -64,16 +62,15 @@ def evaluate(
     verified_cuda_batch = False
     loss_mode = loss_mode.lower().strip()
     bce_loss = nn.BCEWithLogitsLoss()
-    for x, x_cat, c, y, nw in loader:
+    for x, x_cat, c, y in loader:
         x = x.to(device, non_blocking=non_blocking)
         x_cat = x_cat.to(device, non_blocking=non_blocking)
         c = c.to(device, non_blocking=non_blocking)
         y = y.to(device, non_blocking=non_blocking)
-        nw = nw.to(device, non_blocking=non_blocking)
         logits = model(x, x_cat, c)
         # Guard against inadvertently running evaluation on CPU when CUDA is expected.
         if (device.type == "cuda") and (not verified_cuda_batch):
-            tensors = (x, x_cat, c, y, nw, logits)
+            tensors = (x, x_cat, c, y, logits)
             if any(t.device.type != "cuda" for t in tensors):
                 raise RuntimeError("Expected CUDA tensors during evaluation but found CPU tensors.")
             verified_cuda_batch = True
@@ -86,12 +83,9 @@ def evaluate(
                     torch.as_tensor(base_rates, device=logits.device, dtype=logits.dtype)
                     if base_rates is not None else None
                 ),
-                net_worth=nw,
                 condition_weights=(
                     torch.as_tensor(condition_weights, device=logits.device, dtype=logits.dtype)
                     if condition_weights is not None else None),
-                nw_threshold=nw_threshold,
-                nw_multiplier=nw_multiplier,
             )
         elif loss_mode == "bce":
             loss = bce_loss(logits, y)
@@ -117,7 +111,7 @@ def predict_probs(
     model.eval()
     preds_all = []
     verified_cuda_batch = False
-    for x, x_cat, c, y, nw in loader:
+    for x, x_cat, c, _ in loader:
         x = x.to(device, non_blocking=non_blocking)
         x_cat = x_cat.to(device, non_blocking=non_blocking)
         c = c.to(device, non_blocking=non_blocking)
@@ -172,8 +166,6 @@ def train_with_epoch_plots(
     epochs: int,
     lr: float,
     condition_weights: Optional[np.ndarray] = None,
-    nw_threshold: Optional[float] = None,
-    nw_multiplier: float = 1.0,
     loss_mode: str = "localized_entropy",
     base_rates_train: Optional[np.ndarray] = None,
     base_rates_eval: Optional[np.ndarray] = None,
@@ -240,8 +232,6 @@ def train_with_epoch_plots(
         train_loader,
         device,
         condition_weights=condition_weights,
-        nw_threshold=nw_threshold,
-        nw_multiplier=nw_multiplier,
         loss_mode=loss_mode,
         base_rates=base_rates_train_t if use_le else None,
         non_blocking=non_blocking,
@@ -251,8 +241,6 @@ def train_with_epoch_plots(
         val_loader,
         device,
         condition_weights=condition_weights,
-        nw_threshold=nw_threshold,
-        nw_multiplier=nw_multiplier,
         loss_mode=loss_mode,
         base_rates=base_rates_eval_t if use_le else None,
         non_blocking=non_blocking,
@@ -280,14 +268,13 @@ def train_with_epoch_plots(
         verified_cuda_batch = False
         epoch_start = time.time()
         total_batches = len(train_loader) if hasattr(train_loader, "__len__") else None
-        for batch_idx, (x, x_cat, c, y, nw) in enumerate(train_loader, start=1):
+        for batch_idx, (x, x_cat, c, y) in enumerate(train_loader, start=1):
             x = x.to(device, non_blocking=non_blocking)
             x_cat = x_cat.to(device, non_blocking=non_blocking)
             c = c.to(device, non_blocking=non_blocking)
             y = y.to(device, non_blocking=non_blocking)
-            nw = nw.to(device, non_blocking=non_blocking)
             if (device.type == "cuda") and (not verified_cuda_batch):
-                tensors = (x, x_cat, c, y, nw)
+                tensors = (x, x_cat, c, y)
                 if any(t.device.type != "cuda" for t in tensors):
                     raise RuntimeError("Detected CPU tensors in the training loop while using CUDA.")
                 verified_cuda_batch = True
@@ -303,12 +290,9 @@ def train_with_epoch_plots(
                     targets=y,
                     conditions=c,
                     base_rates=base_rates_train_t if base_rates_train_t is not None else br_tracker.rates(),
-                    net_worth=nw,
                     condition_weights=(
                         torch.as_tensor(condition_weights, device=logits.device, dtype=logits.dtype)
                         if condition_weights is not None else None),
-                    nw_threshold=nw_threshold,
-                    nw_multiplier=nw_multiplier,
                 )
             elif loss_mode == "bce":
                 loss = bce_loss(logits, y)
@@ -369,8 +353,6 @@ def train_with_epoch_plots(
                 mid_loss, mid_preds = evaluate(
                     model, val_loader, device,
                     condition_weights=condition_weights,
-                    nw_threshold=nw_threshold,
-                    nw_multiplier=nw_multiplier,
                     loss_mode=loss_mode,
                     base_rates=base_rates_eval_t if use_le else None,
                     non_blocking=non_blocking,
@@ -404,8 +386,6 @@ def train_with_epoch_plots(
         val_loss, preds = evaluate(
             model, val_loader, device,
             condition_weights=condition_weights,
-            nw_threshold=nw_threshold,
-            nw_multiplier=nw_multiplier,
             loss_mode=loss_mode,
             base_rates=base_rates_eval_t if use_le else None,
             non_blocking=non_blocking,

@@ -162,6 +162,8 @@ CTR source (`localized_entropy/data/ctr.py`):
   - Numeric feature matrix `xnum`.
   - Categorical feature matrix `xcat`.
   - Labels, conditions, and optional test labels.
+  - Note: `ctr.weight_col` is currently ignored; net-worth arrays are not
+    included in the training loaders.
   - `num_conditions` set from the max encoded condition across train/test
     (unused "other" buckets are trimmed).
 

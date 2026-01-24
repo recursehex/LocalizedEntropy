@@ -9,23 +9,18 @@ def binary_cross_entropy(
     logits: torch.Tensor,
     targets: torch.Tensor,
     conditions_np: np.ndarray,
-    net_worth_np: np.ndarray,
     condition_weights: Optional[np.ndarray] = None,
-    nw_threshold: Optional[float] = None,
-    nw_multiplier: float = 1.0,
     reduction: str = "mean",
 ) -> torch.Tensor:
     """Compute a loop-based BCE loss with optional condition weighting."""
     logits_flat = logits.view(-1)
     targets_flat = targets.view(-1)
     conds_flat = np.asarray(conditions_np).reshape(-1)
-    nw_flat = np.asarray(net_worth_np).reshape(-1)
     total = torch.zeros((), device=logits.device, dtype=logits.dtype)
     for i in range(logits_flat.shape[0]):
         z = logits_flat[i]
         y = targets_flat[i]
         cond_id = int(conds_flat[i])
-        nw_val = float(nw_flat[i])
         if condition_weights is not None:
             try:
                 w = float(condition_weights[cond_id])
@@ -35,9 +30,6 @@ def binary_cross_entropy(
                 w = 1.0
         else:
             w = 1.0
-        if (nw_threshold is not None) and (nw_multiplier != 1.0):
-            if np.isfinite(nw_val) and (nw_val >= nw_threshold):
-                w = w * float(nw_multiplier)
         per_sample = (
             torch.clamp_min(z, 0.0)
             - z * y
@@ -56,10 +48,7 @@ def localized_entropy(
     targets: torch.Tensor,
     conditions: torch.Tensor,
     base_rates: Optional[torch.Tensor] = None,
-    net_worth: Optional[torch.Tensor] = None,
     condition_weights: Optional[torch.Tensor] = None,
-    nw_threshold: Optional[float] = None,
-    nw_multiplier: float = 1.0,
     reduction: str = "mean",
     eps: float = 1e-12,
 ) -> torch.Tensor:

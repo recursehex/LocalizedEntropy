@@ -411,7 +411,6 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
     condition_col = cfg["condition_col"]
     numeric_cols = cfg["numeric_cols"]
     categorical_cols = cfg.get("categorical_cols", []) or []
-    weight_col = cfg.get("weight_col")
     derived_time = bool(cfg.get("derived_time", False))
     device_counters = bool(cfg.get("device_counters", False))
     test_has_labels = bool(cfg.get("test_has_labels", False))
@@ -454,12 +453,10 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
         extra_cols.extend(["device_ip", "device_id"])
     train_usecols = dedupe(
         [label_col, condition_col, *numeric_cols, *categorical_cols, *filter_cols, *extra_cols]
-        + ([weight_col] if weight_col else [])
     )
     test_usecols = dedupe(
         [condition_col, *numeric_cols, *categorical_cols, *filter_cols, *extra_cols]
         + ([label_col] if test_has_labels else [])
-        + ([weight_col] if weight_col else [])
     )
 
     print("Loading CTR dataset...")
@@ -570,7 +567,6 @@ def build_ctr_arrays(train_df: pd.DataFrame, test_df: pd.DataFrame, cfg: Dict) -
     condition_col = cfg["condition_col"]
     numeric_cols = list(cfg["numeric_cols"])
     categorical_cols = cfg.get("categorical_cols", []) or []
-    weight_col = cfg.get("weight_col")
     max_conditions = cfg.get("max_conditions")
     derived_time = bool(cfg.get("derived_time", False))
     device_counters = bool(cfg.get("device_counters", False))
@@ -633,13 +629,6 @@ def build_ctr_arrays(train_df: pd.DataFrame, test_df: pd.DataFrame, cfg: Dict) -
         xcat_test = np.empty((len(test_df), 0), dtype=np.int64)
         cat_sizes = []
 
-    if weight_col:
-        net_worth = train_df[weight_col].to_numpy(dtype=np.float32)
-        net_worth_test = test_df[weight_col].to_numpy(dtype=np.float32)
-    else:
-        net_worth = np.zeros_like(labels, dtype=np.float32)
-        net_worth_test = np.zeros((len(test_df),), dtype=np.float32)
-
     probs = np.clip(labels, 1e-6, 1.0 - 1e-6)
     labels_test = None
     if test_has_labels and (label_col in test_df.columns):
@@ -654,8 +643,6 @@ def build_ctr_arrays(train_df: pd.DataFrame, test_df: pd.DataFrame, cfg: Dict) -
         "labels_test": labels_test,
         "conds": conds,
         "conds_test": conds_test,
-        "net_worth": net_worth,
-        "net_worth_test": net_worth_test,
         "probs": probs,
         "num_conditions": num_conditions,
         "feature_names": list(numeric_cols),

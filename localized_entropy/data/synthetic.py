@@ -327,7 +327,9 @@ def make_dataset(
                 sigma_log10 = spacing * max(sigma_fraction, 0.0)
                 if band_width is None:
                     mu_log10 = _solve_mu_log10_for_target(target_mean, sigma_log10)
-                    log10p = rng.normal(loc=mu_log10, scale=sigma_log10, size=n).astype(np.float32, copy=False)
+                    log10p = rng.normal(loc=mu_log10, scale=sigma_log10, size=n).astype(
+                        np.float32, copy=False
+                    )
                     probs = np.power(10.0, log10p).astype(np.float32, copy=False)
                     clipped = bool(np.any(probs > 1.0))
                     if clipped:
