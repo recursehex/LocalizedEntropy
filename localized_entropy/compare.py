@@ -140,6 +140,7 @@ def summarize_model_metrics(
     threshold: float = 0.5,
     small_prob_max: float = 0.01,
     small_prob_quantile: float = 0.1,
+    include_threshold: bool = False,
 ) -> dict:
     """Compute a standard set of evaluation metrics from predictions."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
@@ -163,13 +164,16 @@ def summarize_model_metrics(
         )
     else:
         ece_small = float("nan")
-    return {
+    metrics = {
         "logloss": logloss,
         "brier": brier,
         "accuracy": acc,
         "ece": float(ece),
         "ece_small": float(ece_small),
     }
+    if include_threshold:
+        metrics["ece_small_threshold"] = float(small_threshold)
+    return metrics
 
 
 def _winner(
@@ -199,9 +203,14 @@ def format_bce_le_summary(
     le_result: TrainRunResult,
     eval_labels: np.ndarray,
     *,
+    eval_conds: Optional[np.ndarray] = None,
+    condition_label: str = "condition",
     ece_bins: int = 20,
     ece_min_count: int = 1,
     threshold: float = 0.5,
+    small_prob_max: float = 0.01,
+    small_prob_quantile: float = 0.1,
+    per_condition_min_count: int = 1,
 ) -> str:
     """Format a summary comparing BCE vs LE metrics."""
     labels = np.asarray(eval_labels, dtype=np.float64).reshape(-1)
@@ -211,6 +220,9 @@ def format_bce_le_summary(
         ece_bins=ece_bins,
         ece_min_count=ece_min_count,
         threshold=threshold,
+        small_prob_max=small_prob_max,
+        small_prob_quantile=small_prob_quantile,
+        include_threshold=True,
     )
     le_metrics = summarize_model_metrics(
         le_result.eval_preds,
@@ -218,6 +230,9 @@ def format_bce_le_summary(
         ece_bins=ece_bins,
         ece_min_count=ece_min_count,
         threshold=threshold,
+        small_prob_max=small_prob_max,
+        small_prob_quantile=small_prob_quantile,
+        include_threshold=True,
     )
 
     acc_winner = _winner(
@@ -240,10 +255,29 @@ def format_bce_le_summary(
         le_metrics["ece"],
         lower_is_better=True,
     )
+    ece_small_winner = _winner(
+        bce_metrics["ece_small"],
+        le_metrics["ece_small"],
+        lower_is_better=True,
+    )
 
     def fmt(val: float) -> str:
         """Format metric values, preserving NaNs."""
         return "nan" if not np.isfinite(val) else f"{val:.6g}"
+
+    small_threshold_bce = bce_metrics.get("ece_small_threshold")
+    small_threshold_le = le_metrics.get("ece_small_threshold")
+    if (
+        small_threshold_bce is None
+        or small_threshold_le is None
+        or not np.isfinite(small_threshold_bce)
+        or not np.isfinite(small_threshold_le)
+    ):
+        small_threshold_text = ""
+    elif abs(small_threshold_bce - small_threshold_le) <= 1e-8:
+        small_threshold_text = f" (p<= {fmt(small_threshold_bce)})"
+    else:
+        small_threshold_text = f" (BCE p<= {fmt(small_threshold_bce)}, LE p<= {fmt(small_threshold_le)})"
 
     lines = [
         "BCE vs LE summary (lower is better for logloss/brier/ece):",
@@ -251,8 +285,22 @@ def format_bce_le_summary(
         f"Logloss:       BCE={fmt(bce_metrics['logloss'])} | LE={fmt(le_metrics['logloss'])} -> {logloss_winner}",
         f"Brier:         BCE={fmt(bce_metrics['brier'])} | LE={fmt(le_metrics['brier'])} -> {brier_winner}",
         f"ECE:           BCE={fmt(bce_metrics['ece'])} | LE={fmt(le_metrics['ece'])} -> {ece_winner}",
-        f"Closer to actual data (logloss): {logloss_winner}",
+        f"ECE small{small_threshold_text}: BCE={fmt(bce_metrics['ece_small'])} | LE={fmt(le_metrics['ece_small'])} -> {ece_small_winner}",
     ]
+    if eval_conds is not None:
+        closeness = summarize_per_condition_closeness(
+            bce_result.eval_preds,
+            le_result.eval_preds,
+            labels,
+            eval_conds,
+            min_count=per_condition_min_count,
+        )
+        if closeness["total"] > 0:
+            n_a_text = f" | n/a={closeness['n_a']}" if closeness["n_a"] else ""
+            lines.append(
+                f"Per-{condition_label} pred_mean closer to base_rate (n={closeness['total']}): "
+                f"BCE={closeness['bce']} | LE={closeness['le']} | tie={closeness['tie']}{n_a_text}"
+            )
     return "\n".join(lines)
 
 
@@ -485,6 +533,64 @@ def _per_condition_pred_mean(
     counts = np.bincount(c, minlength=num_conditions)
     denom = np.maximum(counts, 1)
     return sums / denom
+
+
+def summarize_per_condition_closeness(
+    bce_preds: np.ndarray,
+    le_preds: np.ndarray,
+    labels: np.ndarray,
+    conds: np.ndarray,
+    *,
+    min_count: int = 1,
+    tol: float = 1e-8,
+) -> Dict[str, int]:
+    """Summarize which loss is closer to per-condition base rates."""
+    p_bce = np.asarray(bce_preds, dtype=np.float64).reshape(-1)
+    p_le = np.asarray(le_preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    c = np.asarray(conds, dtype=np.int64).reshape(-1)
+    if p_bce.size == 0 or p_le.size == 0 or y.size == 0 or c.size == 0:
+        return {"total": 0, "bce": 0, "le": 0, "tie": 0, "n_a": 0}
+    if p_bce.size != c.size or p_le.size != c.size or y.size != c.size:
+        return {"total": 0, "bce": 0, "le": 0, "tie": 0, "n_a": 0}
+    num_conditions = int(c.max()) + 1
+    counts = np.bincount(c, minlength=num_conditions)
+    label_sum = np.bincount(c, weights=y, minlength=num_conditions)
+    base_rate = label_sum / np.maximum(counts, 1)
+    bce_mean = _per_condition_pred_mean(p_bce, c, num_conditions)
+    le_mean = _per_condition_pred_mean(p_le, c, num_conditions)
+    bce_gap = np.abs(bce_mean - base_rate)
+    le_gap = np.abs(le_mean - base_rate)
+
+    bce_better = 0
+    le_better = 0
+    ties = 0
+    n_a = 0
+    for cond_id in range(num_conditions):
+        if counts[cond_id] < min_count:
+            continue
+        bce_val = bce_gap[cond_id]
+        le_val = le_gap[cond_id]
+        bce_ok = np.isfinite(bce_val)
+        le_ok = np.isfinite(le_val)
+        if not bce_ok and not le_ok:
+            n_a += 1
+            continue
+        if bce_ok and not le_ok:
+            bce_better += 1
+            continue
+        if le_ok and not bce_ok:
+            le_better += 1
+            continue
+        diff = bce_val - le_val
+        if abs(diff) <= tol:
+            ties += 1
+        elif diff < 0:
+            bce_better += 1
+        else:
+            le_better += 1
+    total = bce_better + le_better + ties + n_a
+    return {"total": total, "bce": bce_better, "le": le_better, "tie": ties, "n_a": n_a}
 
 
 def build_per_condition_calibration_wilcoxon(
