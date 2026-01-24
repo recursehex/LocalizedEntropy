@@ -23,6 +23,28 @@ class GradSqStats:
 
 
 @torch.no_grad()
+def compute_base_rates_from_loader(
+    loader: DataLoader,
+    num_conditions: int,
+    device: torch.device,
+    dtype: torch.dtype,
+    non_blocking: bool = False,
+) -> torch.Tensor:
+    """Compute per-condition base rates from a full pass over a loader."""
+    counts = torch.zeros(int(num_conditions), dtype=torch.long, device=device)
+    sum_ones = torch.zeros(int(num_conditions), dtype=dtype, device=device)
+    for _, _, c, y in loader:
+        c = c.to(device, non_blocking=non_blocking).view(-1).to(torch.long)
+        y = y.to(device, non_blocking=non_blocking).view(-1).to(dtype)
+        counts += torch.bincount(c, minlength=int(num_conditions))
+        sum_ones += torch.bincount(c, weights=y, minlength=int(num_conditions))
+    denom = counts.clamp_min(1).to(dtype)
+    rates = sum_ones / denom
+    rates = rates.masked_fill(counts == 0, torch.nan)
+    return rates
+
+
+@torch.no_grad()
 def evaluate(
     model: nn.Module,
     loader: DataLoader,
@@ -173,10 +195,25 @@ def train_with_epoch_plots(
     loss_label = "LE" if loss_mode == "localized_entropy" else "BCE"
     use_le = loss_mode == "localized_entropy"
     base_rates_train_t = None
-    if use_le and base_rates_train is not None:
+    base_rates_eval_t = None
+    if use_le:
         first_param = next(model.parameters(), None)
         p_dtype = first_param.dtype if first_param is not None else torch.float32
-        base_rates_train_t = torch.as_tensor(base_rates_train, device=device, dtype=p_dtype)
+        if base_rates_train is None:
+            num_conds_model = getattr(model, "embedding").num_embeddings if hasattr(model, "embedding") else 1
+            base_rates_train_t = compute_base_rates_from_loader(
+                train_loader,
+                num_conditions=num_conds_model,
+                device=device,
+                dtype=p_dtype,
+                non_blocking=non_blocking,
+            )
+        else:
+            base_rates_train_t = torch.as_tensor(base_rates_train, device=device, dtype=p_dtype)
+        if base_rates_eval is None:
+            base_rates_eval_t = base_rates_train_t
+        else:
+            base_rates_eval_t = torch.as_tensor(base_rates_eval, device=device, dtype=p_dtype)
     grad_sq_sums = None
     grad_sq_counts = None
     grad_sq_class_sums = None
@@ -206,7 +243,7 @@ def train_with_epoch_plots(
         nw_threshold=nw_threshold,
         nw_multiplier=nw_multiplier,
         loss_mode=loss_mode,
-        base_rates=base_rates_train if use_le else None,
+        base_rates=base_rates_train_t if use_le else None,
         non_blocking=non_blocking,
     )
     init_eval_loss, _ = evaluate(
@@ -217,7 +254,7 @@ def train_with_epoch_plots(
         nw_threshold=nw_threshold,
         nw_multiplier=nw_multiplier,
         loss_mode=loss_mode,
-        base_rates=base_rates_eval if use_le else None,
+        base_rates=base_rates_eval_t if use_le else None,
         non_blocking=non_blocking,
     )
     train_losses.append(float(init_train_loss))
@@ -233,7 +270,7 @@ def train_with_epoch_plots(
         model.train()
         br_tracker = None
         if use_le and base_rates_train_t is None:
-            # Track per-condition base rates within the epoch for LE denominator terms.
+            # Fallback to streaming base rates if precomputed rates are unavailable.
             num_conds_model = getattr(model, "embedding").num_embeddings if hasattr(model, "embedding") else 1
             first_param = next(model.parameters(), None)
             p_dtype = first_param.dtype if first_param is not None else torch.float32
@@ -335,7 +372,7 @@ def train_with_epoch_plots(
                     nw_threshold=nw_threshold,
                     nw_multiplier=nw_multiplier,
                     loss_mode=loss_mode,
-                    base_rates=base_rates_eval if use_le else None,
+                    base_rates=base_rates_eval_t if use_le else None,
                     non_blocking=non_blocking,
                 )
                 if eval_batch_callback is not None:
@@ -370,7 +407,7 @@ def train_with_epoch_plots(
             nw_threshold=nw_threshold,
             nw_multiplier=nw_multiplier,
             loss_mode=loss_mode,
-            base_rates=base_rates_eval if use_le else None,
+            base_rates=base_rates_eval_t if use_le else None,
             non_blocking=non_blocking,
         )
         if plot_eval_hist_epochs and preds is not None:

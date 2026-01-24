@@ -11,7 +11,13 @@ from localized_entropy.analysis import collect_logits
 from localized_entropy.config import get_data_source, loss_label, resolve_training_cfg
 from localized_entropy.data.pipeline import build_dataloaders
 from localized_entropy.models import ConditionProbNet
-from localized_entropy.training import GradSqStats, evaluate, predict_probs, train_with_epoch_plots
+from localized_entropy.training import (
+    GradSqStats,
+    compute_base_rates_from_loader,
+    evaluate,
+    predict_probs,
+    train_with_epoch_plots,
+)
 from localized_entropy.utils import set_seed
 
 
@@ -193,6 +199,25 @@ def train_single_loss(
     debug_gradients: bool = False,
 ) -> TrainRunResult:
     """Train one model/loss mode and collect evaluation outputs."""
+    base_rates_train = le_base_rates_train
+    base_rates_train_eval = le_base_rates_train_eval
+    base_rates_eval = le_base_rates_eval
+    if loss_mode == "localized_entropy":
+        if base_rates_train is None:
+            num_conds_model = getattr(model, "embedding").num_embeddings if hasattr(model, "embedding") else 1
+            first_param = next(model.parameters(), None)
+            p_dtype = first_param.dtype if first_param is not None else torch.float32
+            base_rates_train = compute_base_rates_from_loader(
+                train_loader,
+                num_conditions=num_conds_model,
+                device=device,
+                dtype=p_dtype,
+                non_blocking=non_blocking,
+            )
+        if base_rates_train_eval is None:
+            base_rates_train_eval = base_rates_train
+        if base_rates_eval is None:
+            base_rates_eval = base_rates_train
     train_losses, eval_losses, grad_sq_stats, eval_batch_losses = train_with_epoch_plots(
         model=model,
         train_loader=train_loader,
@@ -201,8 +226,8 @@ def train_single_loss(
         epochs=int(epochs),
         lr=float(lr),
         loss_mode=loss_mode,
-        base_rates_train=le_base_rates_train,
-        base_rates_eval=le_base_rates_train_eval,
+        base_rates_train=base_rates_train,
+        base_rates_eval=base_rates_train_eval,
         non_blocking=non_blocking,
         plot_eval_hist_epochs=plot_eval_hist_epochs,
         eval_callback=eval_callback,
@@ -218,7 +243,7 @@ def train_single_loss(
         device,
         loss_mode=loss_mode,
         eval_has_labels=eval_has_labels,
-        base_rates=le_base_rates_eval,
+        base_rates=base_rates_eval,
         non_blocking=non_blocking,
     )
     eval_logits = eval_targets = eval_conds = None

@@ -84,7 +84,9 @@ Step-by-step pipeline:
 - When configured, BCE/LE use per-loss training overrides for
   `epochs`, `lr`, and `batch_size`, rebuilding dataloaders per loss to
   honor different batch sizes.
-- For LE, a streaming per-condition base rate is updated each batch.
+- For LE, per-condition base rates are computed once from the training data
+  and reused as fixed normalization factors during training (streaming
+  base rates are only used as a fallback when precomputed rates are absent).
 - Optional mid-epoch eval callbacks can plot prediction histograms.
 - When `training.eval_every_n_batches > 0`, train/eval loss is tracked by
   batch for additional diagnostics in the loss curve plot.
