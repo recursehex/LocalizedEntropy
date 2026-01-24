@@ -22,6 +22,21 @@ class GradSqStats:
     class_ratio: float
 
 
+def _format_embedding_table(embedding: nn.Embedding) -> str:
+    """Format embedding weights without truncation."""
+    weights = embedding.weight.detach().cpu().numpy()
+    return np.array2string(weights, separator=", ", threshold=weights.size)
+
+
+def _print_embedding_table(model: nn.Module, epoch: int) -> None:
+    """Print the full embedding table after an epoch when available."""
+    emb_layer = getattr(model, "embedding", None)
+    if not isinstance(emb_layer, nn.Embedding):
+        return
+    table = _format_embedding_table(emb_layer)
+    print(f"Epoch {epoch:3d} embedding table:\n{table}")
+
+
 @torch.no_grad()
 def compute_base_rates_from_loader(
     loader: DataLoader,
@@ -177,6 +192,7 @@ def train_with_epoch_plots(
     track_eval_batch_losses: bool = False,
     track_grad_sq_sums: bool = False,
     debug_gradients: bool = False,
+    print_embedding_table: bool = False,
 ) -> Tuple[List[float], List[float], Optional[GradSqStats], List[dict]]:
     """Train a model while optionally collecting plots and diagnostics."""
     opt = torch.optim.Adam(model.parameters(), lr=lr)
@@ -406,6 +422,8 @@ def train_with_epoch_plots(
             peak_mem = torch.cuda.max_memory_allocated(device) / 1e6
             log_msg += f" | cuda_mem={mem_alloc:.1f}MB (peak {peak_mem:.1f}MB)"
         print(log_msg)
+        if print_embedding_table:
+            _print_embedding_table(model, epoch)
 
     print(f"Final Train {loss_label}: {train_losses[-1]:.10f}")
     print(f"Final Eval  {loss_label}: {val_losses[-1]:.10f}")

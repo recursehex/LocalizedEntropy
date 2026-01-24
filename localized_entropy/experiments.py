@@ -197,6 +197,7 @@ def train_single_loss(
     collect_grad_sq_sums: bool = False,
     collect_eval_batch_losses: bool = False,
     debug_gradients: bool = False,
+    print_embedding_table: bool = False,
 ) -> TrainRunResult:
     """Train one model/loss mode and collect evaluation outputs."""
     base_rates_train = le_base_rates_train
@@ -236,6 +237,7 @@ def train_single_loss(
         track_eval_batch_losses=collect_eval_batch_losses,
         track_grad_sq_sums=collect_grad_sq_sums,
         debug_gradients=debug_gradients,
+        print_embedding_table=print_embedding_table,
     )
     eval_loss, eval_preds = evaluate_or_predict(
         model,
@@ -339,6 +341,7 @@ def run_repeated_loss_experiments(
                 eval_callback=None,
                 eval_every_n_batches=None,
                 eval_batch_callback=None,
+                print_embedding_table=train_cfg.get("print_embedding_table", False),
                 collect_eval_logits=collect_eval_logits,
             )
             results[loss_mode].append(result)

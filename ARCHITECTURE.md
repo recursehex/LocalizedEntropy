@@ -98,6 +98,8 @@ Step-by-step pipeline:
 - The notebook can enable raw per-parameter gradient debug prints per
   batch via the `debug_gradients` training flag (WARNING: extremely performance
   intensive!).
+- If `training.print_embedding_table=true`, the loop prints the full
+  condition embedding table (`model.embedding.weight`) after each epoch.
 - If `training.loss_mode` is set to `both`, the notebook trains BCE and
   LE sequentially and stores results for comparison.
 

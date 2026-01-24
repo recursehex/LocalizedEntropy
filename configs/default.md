@@ -64,6 +64,8 @@ Template model definitions included in `configs/default.json`:
   training for comparison (ignored when `loss_mode` is `both`).
 - `training.debug_gradients`: If true, print raw per-parameter gradient
   tensors every batch. Recommended batch size of 3. WARNING: this is extremely performance intensive and will generate massive output!
+- `training.print_embedding_table`: If true, print the full condition
+  embedding table after each epoch.
 - `training.by_loss`: Optional per-loss overrides keyed by `bce` or
   `localized_entropy` (`le` is accepted). Values in this block override
   the top-level training fields and apply independently per loss mode.

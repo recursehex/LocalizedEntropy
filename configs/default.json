@@ -94,6 +94,7 @@
     "loss_mode": "both",
     "eval_every_n_batches": 0,
     "debug_gradients": false,
+    "print_embedding_table": true,
     "eval_compare_losses": [
       "localized_entropy",
       "bce"
