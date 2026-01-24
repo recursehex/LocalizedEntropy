@@ -40,27 +40,9 @@ def resolve_experiment(config: Dict[str, Any]) -> Dict[str, Any]:
     return cfg
 
 
-def apply_training_source_overrides(cfg: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply training.by_source overrides based on the configured data source."""
-    training_cfg = cfg.get("training")
-    if not isinstance(training_cfg, dict):
-        return cfg
-    by_source = training_cfg.get("by_source")
-    if not isinstance(by_source, dict):
-        return cfg
-    source = get_data_source(cfg)
-    overrides = by_source.get(source)
-    if not isinstance(overrides, dict):
-        return cfg
-    resolved_training = _deep_update(deepcopy(training_cfg), overrides)
-    cfg["training"] = resolved_training
-    return cfg
-
-
 def load_and_resolve(path: str) -> Dict[str, Any]:
-    """Load config from disk and apply experiment/source overrides."""
-    cfg = resolve_experiment(load_config(path))
-    return apply_training_source_overrides(cfg)
+    """Load config from disk and apply experiment overrides."""
+    return resolve_experiment(load_config(path))
 
 
 def get_data_source(cfg: Dict[str, Any]) -> str:
@@ -81,18 +63,20 @@ def loss_label(loss_mode: str) -> str:
     return "LE" if loss_mode.lower().strip() == "localized_entropy" else "BCE"
 
 
+def _normalize_loss_mode(mode: Optional[str]) -> Optional[str]:
+    """Normalize a loss mode string to a canonical value."""
+    if mode is None:
+        return None
+    text = str(mode).lower().strip()
+    if text in {"le", "localized_entropy"}:
+        return "localized_entropy"
+    if text == "bce":
+        return "bce"
+    return None
+
+
 def resolve_loss_modes(loss_mode) -> list:
     """Normalize loss mode configuration into a list of modes."""
-    def normalize(mode: str) -> Optional[str]:
-        """Normalize a loss mode string to a canonical value."""
-        if mode is None:
-            return None
-        text = str(mode).lower().strip()
-        if text in {"le", "localized_entropy"}:
-            return "localized_entropy"
-        if text == "bce":
-            return "bce"
-        return None
 
     def expand(mode: str) -> list:
         """Expand combined loss-mode strings into a list."""
@@ -102,11 +86,11 @@ def resolve_loss_modes(loss_mode) -> list:
         if "," in text:
             items = []
             for part in text.split(","):
-                norm = normalize(part)
+                norm = _normalize_loss_mode(part)
                 if norm is not None:
                     items.append(norm)
             return items
-        norm = normalize(text)
+        norm = _normalize_loss_mode(text)
         return [norm] if norm is not None else []
 
     modes = []
@@ -123,7 +107,7 @@ def resolve_loss_modes(loss_mode) -> list:
             }:
                 modes.extend(["bce", "localized_entropy"])
                 continue
-            norm = normalize(item)
+            norm = _normalize_loss_mode(item)
             if norm is not None:
                 modes.append(norm)
     else:
@@ -137,3 +121,38 @@ def resolve_loss_modes(loss_mode) -> list:
         seen.add(mode)
         ordered.append(mode)
     return ordered
+
+
+def resolve_training_cfg(cfg: Dict[str, Any], loss_mode: Optional[str] = None) -> Dict[str, Any]:
+    """Resolve training config, including optional per-loss/per-source overrides."""
+    training_cfg = cfg.get("training")
+    if not isinstance(training_cfg, dict):
+        return {}
+    resolved = deepcopy(training_cfg)
+    if loss_mode is None:
+        return resolved
+    by_loss = training_cfg.get("by_loss")
+    if not isinstance(by_loss, dict):
+        return resolved
+    normalized = {}
+    for key, value in by_loss.items():
+        norm = _normalize_loss_mode(key)
+        if norm is None or not isinstance(value, dict):
+            continue
+        normalized[norm] = value
+    overrides = normalized.get(_normalize_loss_mode(loss_mode))
+    if overrides:
+        overrides = deepcopy(overrides)
+        source_overrides = overrides.pop("by_source", None)
+        resolved = _deep_update(resolved, overrides)
+        if isinstance(source_overrides, dict):
+            normalized_sources = {}
+            for key, value in source_overrides.items():
+                if not isinstance(value, dict):
+                    continue
+                normalized_sources[str(key).lower().strip()] = value
+            source = get_data_source(cfg)
+            source_cfg = normalized_sources.get(source)
+            if source_cfg:
+                resolved = _deep_update(resolved, source_cfg)
+    return resolved

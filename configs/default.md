@@ -64,25 +64,47 @@ Template model definitions included in `configs/default.json`:
   training for comparison (ignored when `loss_mode` is `both`).
 - `training.debug_gradients`: If true, print raw per-parameter gradient
   tensors every batch. Recommended batch size of 3. WARNING: this is extremely performance intensive and will generate massive output!
-- `training.by_source`: Optional per-dataset overrides keyed by
-  `data.source` (`ctr` or `synthetic`). Values in this block override
-  the top-level training fields after experiment resolution.
+- `training.by_loss`: Optional per-loss overrides keyed by `bce` or
+  `localized_entropy` (`le` is accepted). Values in this block override
+  the top-level training fields and apply independently per loss mode.
+- `training.by_loss.<loss>.by_source`: Optional per-dataset overrides
+  keyed by `data.source` (`ctr` or `synthetic`). These apply after the
+  per-loss overrides to select hyperparameters for a specific loss +
+  data source combination.
 
 Example:
 
 ```json
 "training": {
-  "loss_mode": "localized_entropy",
+  "loss_mode": "both",
   "eval_compare_losses": ["localized_entropy", "bce"],
   "eval_every_n_batches": 200,
-  "by_source": {
-    "ctr": {
-      "epochs": 2,
-      "batch_size": 10000
+  "by_loss": {
+    "bce": {
+      "by_source": {
+        "ctr": {
+          "epochs": 2,
+          "batch_size": 10000
+        },
+        "synthetic": {
+          "epochs": 5,
+          "batch_size": 50000
+        }
+      }
     },
-    "synthetic": {
-      "epochs": 5,
-      "batch_size": 50000
+    "localized_entropy": {
+      "by_source": {
+        "ctr": {
+          "epochs": 4,
+          "batch_size": 20000,
+          "lr": 0.001
+        },
+        "synthetic": {
+          "epochs": 8,
+          "batch_size": 10000,
+          "lr": 0.0005
+        }
+      }
     }
   }
 }

@@ -18,7 +18,9 @@ Step-by-step pipeline:
 1) Load config + set seed and device
 - Uses `localized_entropy/config.py` to load and resolve
   `configs/default.json`.
-- Applies `training.by_source` overrides based on `data.source`.
+- Per-loss `training.by_loss` overrides are resolved when each loss is
+  trained (BCE vs LE), including `by_source` settings nested under each
+  loss for the active data source.
 - Chooses CUDA vs CPU via `localized_entropy/utils.py`.
 
 2) Optional CTR filtering + caching (config-driven)
@@ -79,6 +81,9 @@ Step-by-step pipeline:
 - Supports two loss modes:
   - Localized Entropy (`localized_entropy/losses.py`).
   - BCE (`torch.nn.BCEWithLogitsLoss`).
+- When configured, BCE/LE use per-loss training overrides for
+  `epochs`, `lr`, and `batch_size`, rebuilding dataloaders per loss to
+  honor different batch sizes.
 - For LE, a streaming per-condition base rate is updated each batch.
 - Optional mid-epoch eval callbacks can plot prediction histograms.
 - When `training.eval_every_n_batches > 0`, train/eval loss is tracked by

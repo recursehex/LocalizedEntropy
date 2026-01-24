@@ -8,7 +8,8 @@ import torch
 from torch.utils.data import DataLoader
 
 from localized_entropy.analysis import collect_logits
-from localized_entropy.config import get_data_source, loss_label
+from localized_entropy.config import get_data_source, loss_label, resolve_training_cfg
+from localized_entropy.data.pipeline import build_dataloaders
 from localized_entropy.models import ConditionProbNet
 from localized_entropy.training import GradSqStats, evaluate, predict_probs, train_with_epoch_plots
 from localized_entropy.utils import set_seed
@@ -28,6 +29,30 @@ class TrainRunResult:
     eval_targets: Optional[torch.Tensor]
     eval_conds: Optional[torch.Tensor]
     grad_sq_stats: Optional[GradSqStats]
+
+
+def build_loss_loaders(
+    cfg: dict,
+    loss_mode: str,
+    splits,
+    device: torch.device,
+    use_cuda: bool,
+) -> Tuple[object, dict]:
+    """Build dataloaders using per-loss training overrides when configured."""
+    train_cfg = resolve_training_cfg(cfg, loss_mode)
+    batch_size = train_cfg.get("batch_size", cfg.get("training", {}).get("batch_size"))
+    loaders = build_dataloaders(splits, cfg, device, use_cuda, batch_size=batch_size)
+    return loaders, train_cfg
+
+
+def select_eval_loader(eval_split: str, loaders: object) -> DataLoader:
+    """Select eval loader for a split, falling back when test is unavailable."""
+    split = str(eval_split).lower().strip()
+    if split == "train":
+        return loaders.train_loader
+    if split == "test":
+        return loaders.test_loader if loaders.test_loader is not None else loaders.eval_loader
+    return loaders.eval_loader
 
 
 def build_model(cfg: dict, splits, device: torch.device) -> ConditionProbNet:
@@ -230,12 +255,12 @@ def run_repeated_loss_experiments(
     cfg: dict,
     loss_modes: List[str],
     splits,
-    loaders,
-    train_eval_loader: DataLoader,
-    eval_loader: DataLoader,
+    eval_split: str,
+    eval_labels: Optional[np.ndarray],
+    eval_conds: Optional[np.ndarray],
+    eval_name: str,
     device: torch.device,
     use_cuda: bool,
-    eval_has_labels: bool,
     seeds: Iterable[int],
     le_base_rates_train: Optional[np.ndarray] = None,
     le_base_rates_train_eval: Optional[np.ndarray] = None,
@@ -244,21 +269,42 @@ def run_repeated_loss_experiments(
     collect_eval_logits: bool = False,
 ) -> Dict[str, List[TrainRunResult]]:
     """Run repeated training for each loss mode and seed."""
-    train_cfg = cfg["training"]
+    eval_has_labels = eval_labels is not None
+    per_loss = {}
+    for loss_mode in loss_modes:
+        loss_loaders, loss_train_cfg = build_loss_loaders(cfg, loss_mode, splits, device, use_cuda)
+        loss_eval_loader = select_eval_loader(eval_split, loss_loaders)
+        loss_train_eval_loader, _, _ = resolve_train_eval_bundle(
+            eval_split,
+            loss_eval_loader,
+            eval_labels,
+            eval_conds,
+            eval_name,
+            loss_loaders,
+            splits,
+        )
+        per_loss[loss_mode] = {
+            "train_cfg": loss_train_cfg,
+            "loaders": loss_loaders,
+            "eval_loader": loss_eval_loader,
+            "train_eval_loader": loss_train_eval_loader,
+        }
     results: Dict[str, List[TrainRunResult]] = {loss_mode: [] for loss_mode in loss_modes}
     for seed in seeds:
         for loss_mode in loss_modes:
             set_seed(int(seed), use_cuda)
             model = build_model(cfg, splits, device)
+            loss_bundle = per_loss[loss_mode]
+            train_cfg = loss_bundle["train_cfg"]
             result = train_single_loss(
                 model=model,
                 loss_mode=loss_mode,
-                train_loader=loaders.train_loader,
-                train_eval_loader=train_eval_loader,
-                eval_loader=eval_loader,
+                train_loader=loss_bundle["loaders"].train_loader,
+                train_eval_loader=loss_bundle["train_eval_loader"],
+                eval_loader=loss_bundle["eval_loader"],
                 device=device,
-                epochs=train_cfg["epochs"],
-                lr=train_cfg["lr"],
+                epochs=train_cfg.get("epochs", cfg["training"]["epochs"]),
+                lr=train_cfg.get("lr", cfg["training"]["lr"]),
                 eval_has_labels=eval_has_labels,
                 le_base_rates_train=le_base_rates_train,
                 le_base_rates_train_eval=le_base_rates_train_eval,

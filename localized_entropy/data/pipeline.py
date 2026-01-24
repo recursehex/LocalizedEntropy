@@ -124,9 +124,13 @@ def build_dataloaders(
     cfg: Dict,
     device: torch.device,
     use_cuda: bool,
+    batch_size: Optional[int] = None,
 ) -> LoaderBundle:
     """Construct train/eval/test loaders from prepared splits."""
-    batch_size = int(cfg["training"]["batch_size"])
+    if batch_size is None:
+        batch_size = int(cfg["training"]["batch_size"])
+    else:
+        batch_size = int(batch_size)
     move_dataset_to_cuda = bool(cfg["device"]["move_dataset_to_cuda"])
     allow_dataloader_workers = cfg["device"].get("allow_dataloader_workers")
     env_var = cfg["device"].get("num_workers_env", "LOCALIZED_ENTROPY_NUM_WORKERS")
