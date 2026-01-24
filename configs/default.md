@@ -120,9 +120,10 @@ Example:
 - `model.activation`: Hidden-layer activation (`relu`, `gelu`, `silu`,
   `tanh`, `leaky_relu`, `elu`, `selu`, `sigmoid`, or `none`). Supports a
   list (length must match `hidden_sizes`) to set per-layer activations.
-- `model.norm`: Optional normalization per hidden layer (`batch_norm` or
-  `layer_norm`). Supports a list (length must match `hidden_sizes`) to
-  set per-layer norms.
+- `model.norm`: Normalization per hidden layer (`batch_norm` or
+  `layer_norm`; `none`/`null` disables). The base config defaults to
+  `null`. Supports a list (length must match `hidden_sizes`) to set
+  per-layer norms.
 - `model.dropout`: Dropout probability in the MLP. Can be a list (length
   must match `hidden_sizes`) to set per-layer dropouts.
 
