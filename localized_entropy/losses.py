@@ -96,48 +96,53 @@ def localized_entropy(
     -------
     Scalar torch.Tensor (loss).
     """
-    z = logits.view(-1)
-    y = targets.view(-1).to(z.dtype)
-    c = conditions.view(-1).to(torch.long)
+    z = logits.view(-1)  # Flatten logits to 1D so each sample has one logit.
+    y = targets.view(-1).to(z.dtype)  # Flatten labels and match dtype for math.
+    c = conditions.view(-1).to(torch.long)  # Flatten class ids for grouping.
 
+    # Per-sample stable BCE-with-logits for the numerator CE_j(y, yhat).
     bce_per = torch.clamp_min(z, 0) - z * y + torch.log1p(torch.exp(-torch.abs(z)))
 
-    total = z.new_zeros(())
-    unique_conds = torch.unique(c)
-    N = y.numel()
+    total = z.new_zeros(())  # Accumulator for sum_j CE_j(y, yhat) / CE_j(y, p_j).
+    unique_conds = torch.unique(c)  # Iterate over observed classes only.
+    N = y.numel()  # Total samples for final normalization by sum_j N_j.
 
     for cid in unique_conds:
-        mask = (c == cid)
-        num = bce_per[mask].sum()
-        yj = y[mask]
-        n = mask.sum()
-        ones = yj.sum()
-        zeros = n.to(y.dtype) - ones
+        mask = (c == cid)  # Select samples in this class j.
+        num = bce_per[mask].sum()  # Numerator CE_j(y, yhat) over class j.
+        yj = y[mask]  # Labels for class j to compute base rate p_j.
+        n = mask.sum()  # N_j: number of samples in this class.
+        ones = yj.sum()  # Count of positives in class j.
+        zeros = n.to(y.dtype) - ones  # Count of negatives in class j.
         if base_rates is not None:
             idx = cid.item()
             if 0 <= idx < base_rates.numel():
-                pj = base_rates[idx].to(y.dtype)
+                pj = base_rates[idx].to(y.dtype)  # Use provided p_j when available.
                 if not torch.isfinite(pj):
-                    pj = ones / n.clamp_min(1)
+                    print(f"[localized_entropy] base_rates[{idx}] is invalid; using empirical p_j for class {idx}.")
+                    pj = ones / n.clamp_min(1)  # Fallback to empirical rate if invalid.
             else:
-                pj = ones / n.clamp_min(1)
+                print(f"[localized_entropy] base_rates missing for class {cid.item()}; using empirical p_j.")
+                pj = ones / n.clamp_min(1)  # Fallback to empirical rate if index missing.
         else:
-            pj = ones / n.clamp_min(1)
-        pj = pj.clamp(eps, 1.0 - eps)
+            print(f"[localized_entropy] base_rates not provided; using empirical p_j for class {cid.item()}.")
+            pj = ones / n.clamp_min(1)  # Empirical base rate p_j from labels.
+        pj = pj.clamp(eps, 1.0 - eps)  # Clamp to avoid log(0) in denominator.
 
+        # Denominator CE_j(y, p_j) for constant predictor at base rate.
         den = ones * (-torch.log(pj)) + zeros * (-torch.log1p(-pj))
-        class_term = num / den.clamp_min(eps)
+        class_term = num / den.clamp_min(eps)  # Normalize by base-rate CE_j.
 
         if condition_weights is not None:
             idx = cid.item()
             if 0 <= idx < condition_weights.numel():
                 w = condition_weights[idx]
                 if torch.isfinite(w) and (w > 0):
-                    class_term = class_term * w
+                    class_term = class_term * w  # Optional per-class scaling.
 
-        total += class_term
+        total += class_term  # Sum normalized class terms across all classes.
 
-    loss = total / max(N, 1)
+    loss = total / max(N, 1)  # Final LE: average by total samples sum_j N_j.
     if reduction == "sum":
-        return loss * N
+        return loss * N  # Return un-averaged total when requested.
     return loss
