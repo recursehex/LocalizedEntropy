@@ -4,6 +4,30 @@ import numpy as np
 import torch
 
 
+def _summarize_tensor(name: str, tensor: torch.Tensor, max_items: int = 8) -> str:
+    """Return a compact debug summary for a tensor."""
+    t = tensor.detach()
+    shape = tuple(t.shape)
+    dtype = t.dtype
+    device = t.device
+    numel = t.numel()
+    if numel == 0:
+        stats = "empty"
+        sample = []
+    else:
+        t_float = t if torch.is_floating_point(t) else t.to(torch.float32)
+        stats = (
+            f"min={t_float.min().item():.6g} "
+            f"max={t_float.max().item():.6g} "
+            f"mean={t_float.mean().item():.6g}"
+        )
+        sample = t.view(-1)[:max_items].detach().cpu().tolist()
+    return (
+        f"{name}: shape={shape} dtype={dtype} device={device} "
+        f"numel={numel} {stats} sample={sample}"
+    )
+
+
 # Custom BCE loss (loop-based, with logits)
 def binary_cross_entropy(
     logits: torch.Tensor,
@@ -51,6 +75,7 @@ def localized_entropy(
     condition_weights: Optional[torch.Tensor] = None,
     reduction: str = "mean",
     eps: float = 1e-12,
+    debug: bool = False,
 ) -> torch.Tensor:
     """
     Localized Entropy (LE) implementation using PyTorch.
@@ -92,10 +117,26 @@ def localized_entropy(
     reduction:     'mean' (default) returns LE as defined; 'sum' returns LE * N.
     eps:           Small constant for numerical stability.
 
+    debug:        When True, prints a compact summary of LE inputs.
+
     Returns
     -------
     Scalar torch.Tensor (loss).
     """
+    if debug:
+        print("[localized_entropy][debug] input summary")
+        print(_summarize_tensor("logits", logits))
+        print(_summarize_tensor("targets", targets))
+        print(_summarize_tensor("conditions", conditions))
+        if base_rates is None:
+            print("base_rates: None")
+        else:
+            print(_summarize_tensor("base_rates", base_rates))
+        if condition_weights is None:
+            print("condition_weights: None")
+        else:
+            print(_summarize_tensor("condition_weights", condition_weights))
+
     z = logits.view(-1)  # Flatten logits to 1D so each sample has one logit.
     y = targets.view(-1).to(z.dtype)  # Flatten labels and match dtype for math.
     c = conditions.view(-1).to(torch.long)  # Flatten class ids for grouping.

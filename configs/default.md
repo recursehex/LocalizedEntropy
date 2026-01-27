@@ -232,8 +232,10 @@ These settings are used when `data.source` is `synthetic`.
 - `synthetic.num_conditions`: Number of synthetic conditions.
 - `synthetic.min_samples_per_condition` / `synthetic.max_samples_per_condition`:
   Samples per condition.
-- `synthetic.num_numeric_features`: Number of numeric features to emit
-  (>= 2).
+- `synthetic.numeric_features`: Ordered list of numeric features to emit.
+  Supported values: `age`, `net_worth`, `log10_net_worth`, and `noise`
+  (or `noise_1`, `noise_2`, ...). Any `noise*` entries draw from
+  `synthetic.extra_feature_dist`.
 - `synthetic.condition_mode`: `random` (default) or `uniform_mean`.
   - `random`: each condition samples its own shape parameters.
   - `uniform_mean`: conditions share one sampled shape and are rescaled
@@ -275,7 +277,7 @@ Example: small synthetic dataset with 4 conditions and 3 features:
   "num_conditions": 4,
   "min_samples_per_condition": 50000,
   "max_samples_per_condition": 50000,
-  "num_numeric_features": 3
+  "numeric_features": ["age", "net_worth", "log10_net_worth"]
 }
 ```
 

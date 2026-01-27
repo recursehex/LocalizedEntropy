@@ -417,23 +417,55 @@ def build_features(dataset: Dict[str, np.ndarray], cfg: Dict) -> Dict[str, np.nd
     ages = dataset["ages"]
     net_worth = dataset["net_worth"]
     log10_nw = np.log10(np.clip(net_worth, 1e-12, None))
-    base_features = np.stack([ages, log10_nw], axis=1).astype(np.float32)
+    base_features = {
+        "age": ages.astype(np.float32),
+        "net_worth": net_worth.astype(np.float32),
+        "log10_net_worth": log10_nw.astype(np.float32),
+    }
 
-    num_features = int(cfg["num_numeric_features"])
-    if num_features < 2:
-        raise ValueError("num_numeric_features must be >= 2 for synthetic data.")
+    feature_list = cfg.get("numeric_features")
+    if feature_list is None:
+        num_features = int(cfg.get("num_numeric_features", 3))
+        if num_features < 1:
+            raise ValueError("num_numeric_features must be >= 1 for synthetic data.")
+        base_names = list(base_features.keys())
+        base_count = min(num_features, len(base_names))
+        feature_list = base_names[:base_count]
+        extra_count = num_features - base_count
+        feature_list += [f"noise_{i + 1}" for i in range(extra_count)]
+    elif not isinstance(feature_list, (list, tuple)):
+        raise ValueError("synthetic.numeric_features must be a list of feature names.")
 
-    feature_names = ["age", "log10_net_worth"]
-    if num_features > 2:
-        extra_count = num_features - 2
-        mean = float(cfg["extra_feature_dist"]["mean"])
-        std = float(cfg["extra_feature_dist"]["std"])
-        rng = dataset.get("rng", np.random.default_rng())
-        extra = rng.normal(loc=mean, scale=std, size=(base_features.shape[0], extra_count)).astype(np.float32)
-        feature_names += [f"noise_{i + 1}" for i in range(extra_count)]
-        xnum = np.concatenate([base_features, extra], axis=1)
-    else:
-        xnum = base_features
+    features = []
+    feature_names = []
+    mean = float(cfg["extra_feature_dist"]["mean"])
+    std = float(cfg["extra_feature_dist"]["std"])
+    rng = dataset.get("rng", np.random.default_rng())
+    noise_idx = 1
+    for name in feature_list:
+        key = str(name).strip()
+        key_lower = key.lower()
+        if key_lower in base_features:
+            features.append(base_features[key_lower])
+            feature_names.append(key_lower)
+            continue
+        if key_lower == "noise" or key_lower.startswith("noise_"):
+            noise = rng.normal(loc=mean, scale=std, size=(ages.shape[0],)).astype(np.float32)
+            features.append(noise)
+            if key_lower == "noise":
+                feature_names.append(f"noise_{noise_idx}")
+            else:
+                feature_names.append(key_lower)
+            noise_idx += 1
+            continue
+        raise ValueError(
+            "Unsupported synthetic numeric feature "
+            f"'{name}'. Allowed: age, net_worth, log10_net_worth, noise."
+        )
+
+    if not features:
+        raise ValueError("synthetic.numeric_features produced no features.")
+    xnum = np.stack(features, axis=1).astype(np.float32)
 
     return {
         "xnum": xnum,

@@ -148,7 +148,7 @@
     "dropout": 0.3
   },
   "data": {
-    "source": "ctr",
+    "source": "synthetic",
     "train_split": 0.9,
     "standardize": true,
     "standardize_eps": 1e-06,
@@ -218,6 +218,11 @@
     "num_conditions": 6,
     "min_samples_per_condition": 1000000,
     "max_samples_per_condition": 1000000,
+    "numeric_features": [
+      "age",
+      "net_worth",
+      "log10_net_worth"
+    ],
     "num_numeric_features": 2,
     "condition_mode": "uniform_mean",
     "uniform_mean_log10_range": [
@@ -301,7 +306,7 @@
     "small_prob_quantile": 0.1
   },
   "repeats": {
-    "enabled": true,
+    "enabled": false,
     "num_runs": 10,
     "seed_stride": 1,
     "include_base_run": true,

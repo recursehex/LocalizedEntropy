@@ -37,6 +37,46 @@ def _print_embedding_table(model: nn.Module, epoch: int) -> None:
     print(f"Epoch {epoch:3d} embedding table:\n{table}")
 
 
+def _summarize_tensor(name: str, tensor: torch.Tensor, max_items: int = 8) -> str:
+    """Return a compact debug summary for a tensor."""
+    t = tensor.detach()
+    shape = tuple(t.shape)
+    dtype = t.dtype
+    device = t.device
+    numel = t.numel()
+    if numel == 0:
+        stats = "empty"
+        sample = []
+    else:
+        t_float = t if torch.is_floating_point(t) else t.to(torch.float32)
+        stats = (
+            f"min={t_float.min().item():.6g} "
+            f"max={t_float.max().item():.6g} "
+            f"mean={t_float.mean().item():.6g}"
+        )
+        sample = t.view(-1)[:max_items].detach().cpu().tolist()
+    return (
+        f"{name}: shape={shape} dtype={dtype} device={device} "
+        f"numel={numel} {stats} sample={sample}"
+    )
+
+
+def _print_le_batch_inputs(
+    epoch: int,
+    batch_idx: int,
+    x: torch.Tensor,
+    x_cat: torch.Tensor,
+    c: torch.Tensor,
+    y: torch.Tensor,
+) -> None:
+    """Print training batch inputs that feed the LE loss."""
+    print(f"[LE][debug] epoch={epoch} batch={batch_idx} input features")
+    print(_summarize_tensor("x", x))
+    print(_summarize_tensor("x_cat", x_cat))
+    print(_summarize_tensor("conditions", c))
+    print(_summarize_tensor("targets", y))
+
+
 @torch.no_grad()
 def compute_base_rates_from_loader(
     loader: DataLoader,
@@ -192,6 +232,7 @@ def train_with_epoch_plots(
     track_eval_batch_losses: bool = False,
     track_grad_sq_sums: bool = False,
     debug_gradients: bool = False,
+    debug_le_inputs: bool = True,
     print_embedding_table: bool = False,
 ) -> Tuple[List[float], List[float], Optional[GradSqStats], List[dict]]:
     """Train a model while optionally collecting plots and diagnostics."""
@@ -289,6 +330,8 @@ def train_with_epoch_plots(
             x_cat = x_cat.to(device, non_blocking=non_blocking)
             c = c.to(device, non_blocking=non_blocking)
             y = y.to(device, non_blocking=non_blocking)
+            if use_le and debug_le_inputs:
+                _print_le_batch_inputs(epoch, batch_idx, x, x_cat, c, y)
             if (device.type == "cuda") and (not verified_cuda_batch):
                 tensors = (x, x_cat, c, y)
                 if any(t.device.type != "cuda" for t in tensors):
@@ -309,6 +352,7 @@ def train_with_epoch_plots(
                     condition_weights=(
                         torch.as_tensor(condition_weights, device=logits.device, dtype=logits.dtype)
                         if condition_weights is not None else None),
+                    debug=debug_le_inputs,
                 )
             elif loss_mode == "bce":
                 loss = bce_loss(logits, y)

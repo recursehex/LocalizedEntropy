@@ -98,6 +98,10 @@ Step-by-step pipeline:
 - The notebook can enable raw per-parameter gradient debug prints per
   batch via the `debug_gradients` training flag (WARNING: extremely performance
   intensive!).
+- When `debug_le_inputs=true`, the training loop prints per-batch input
+  feature summaries (x, x_cat, conditions, targets) and forwards a debug
+  flag into `localized_entropy` to summarize logits/targets/conditions and
+  optional base-rate/weight tensors.
 - If `training.print_embedding_table=true`, the loop prints the full
   condition embedding table (`model.embedding.weight`) after each epoch.
 - If `training.loss_mode` is set to `both`, the notebook trains BCE and
@@ -172,7 +176,9 @@ CTR source (`localized_entropy/data/ctr.py`):
 Synthetic source (`localized_entropy/data/synthetic.py`):
 - Generates net-worth and age distributions per condition.
 - Produces probability targets from a sigmoid + interest curve.
-- Adds extra noise features if configured.
+- Builds numeric features based on `synthetic.numeric_features`
+  (supported values: `age`, `net_worth`, `log10_net_worth`, and
+  `noise*`).
 - Supports `synthetic.condition_mode=uniform_mean` to keep a shared
   shape across conditions and rescale to per-condition mean
   probabilities (log10-uniform range), with optional non-overlapping

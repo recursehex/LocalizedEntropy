@@ -197,6 +197,7 @@ def train_single_loss(
     collect_grad_sq_sums: bool = False,
     collect_eval_batch_losses: bool = False,
     debug_gradients: bool = False,
+    debug_le_inputs: bool = True,
     print_embedding_table: bool = False,
 ) -> TrainRunResult:
     """Train one model/loss mode and collect evaluation outputs."""
@@ -237,6 +238,7 @@ def train_single_loss(
         track_eval_batch_losses=collect_eval_batch_losses,
         track_grad_sq_sums=collect_grad_sq_sums,
         debug_gradients=debug_gradients,
+        debug_le_inputs=debug_le_inputs,
         print_embedding_table=print_embedding_table,
     )
     eval_loss, eval_preds = evaluate_or_predict(
