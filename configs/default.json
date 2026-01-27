@@ -223,8 +223,7 @@
       "net_worth",
       "log10_net_worth"
     ],
-    "num_numeric_features": 2,
-    "condition_mode": "uniform_mean",
+    "condition_mode": "random",
     "uniform_mean_log10_range": [
       -1.0,
       -6.0
@@ -236,29 +235,29 @@
     "base_mu_ln": 10.0,
     "base_sigma_ln": 1.5,
     "sigmoid_mu_range": [
-      6.0,
-      6.0,
-      1
+      5.0,
+      7.0,
+      50
     ],
     "sigmoid_s_range": [
-      0.25,
-      0.25,
-      1
+      0.2,
+      0.3,
+      50
     ],
     "age_mu_range": [
-      50.0,
-      50.0,
-      1
+      30.0,
+      70.0,
+      50
     ],
     "age_sigma_range": [
-      20.0,
-      20.0,
-      1
+      10.0,
+      30.0,
+      50
     ],
     "interest_scale_log10_range": [
       0.0,
-      0.0,
-      1
+      0.001,
+      50
     ],
     "age_min": 10,
     "age_max": 100,
