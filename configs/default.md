@@ -270,6 +270,17 @@ These settings are used when `data.source` is `synthetic`.
   `[value, value, 1]` so only one parameter value is sampled.
 - `synthetic.age_min` / `synthetic.age_max`: Age bounds.
 - `synthetic.extra_feature_dist`: Mean/std for extra noise features.
+- `synthetic.reweighting`: Optional negative downsampling + weighting (training only).
+  - `synthetic.reweighting.enabled`: Enable negative downsampling/weights (default false).
+  - `synthetic.reweighting.mode`: `fixed` or `adjustable`.
+    - `fixed`: remove `negative_removal_n` negatives per kept negative.
+    - `adjustable`: remove `negative_removal_n * abs(log10(base_rate))` negatives per kept negative,
+      where `base_rate` is the per-condition mean probability (from synthetic `probs`) clamped by
+      `base_rate_log10_floor`.
+  - `synthetic.reweighting.negative_removal_n`: Base N used for removal ratios (rounded to int).
+  - `synthetic.reweighting.base_rate_log10_floor`: Minimum base rate used before `log10` to avoid
+    `log10(0)` (default `1e-6`).
+  - Positives are never dropped and always keep weight 1; kept negatives carry weight `N`.
 
 Example: small synthetic dataset with 4 conditions and 3 features:
 

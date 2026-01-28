@@ -73,6 +73,7 @@ def localized_entropy(
     conditions: torch.Tensor,
     base_rates: Optional[torch.Tensor] = None,
     condition_weights: Optional[torch.Tensor] = None,
+    sample_weights: Optional[torch.Tensor] = None,
     reduction: str = "mean",
     eps: float = 1e-12,
     debug: bool = False,
@@ -91,11 +92,14 @@ def localized_entropy(
 
     Localized Entropy:
         LE = ( Σ_{j=1..M}  CE_j(y, ŷ) / CE_j(y, p_j) ) / ( Σ_{j=1..M} N_j )
+        If sample weights w_i are provided, N_j and the per-class CE terms
+        are computed with weighted counts, and the denominator becomes Σ_i w_i.
 
     - Numerator uses per-sample predictions (stable BCE-with-logits).
     - Denominator uses a constant predictor at the class base rate p_j.
     - We clamp probabilities to [eps, 1-eps] for numerical stability.
-    - We divide by total samples Σ_j N_j (not by number of classes).
+    - We divide by total samples Σ_j N_j (not by number of classes), or by total
+        weight Σ_i w_i when sample weights are provided.
 
     Gradient safety
     ---------------
@@ -114,7 +118,11 @@ def localized_entropy(
     condition_weights:
                     Optional 1D tensor of per-class weights where index is class id.
                     If provided and indexable for a class id, scales that class term.
-    reduction:     'mean' (default) returns LE as defined; 'sum' returns LE * N.
+    sample_weights:
+                    Optional 1D tensor of per-sample weights (same length as logits).
+                    If provided, each sample's contribution is scaled and totals are
+                    normalized by the summed weights.
+    reduction:     'mean' (default) returns LE as defined; 'sum' returns LE * total weight.
     eps:           Small constant for numerical stability.
 
     debug:        When True, prints a compact summary of LE inputs.
@@ -136,6 +144,10 @@ def localized_entropy(
             print("condition_weights: None")
         else:
             print(_summarize_tensor("condition_weights", condition_weights))
+        if sample_weights is None:
+            print("sample_weights: None")
+        else:
+            print(_summarize_tensor("sample_weights", sample_weights))
 
     z = logits.view(-1)  # Flatten logits to 1D so each sample has one logit.
     y = targets.view(-1).to(z.dtype)  # Flatten labels and match dtype for math.
@@ -143,18 +155,28 @@ def localized_entropy(
 
     # Per-sample stable BCE-with-logits for the numerator CE_j(y, yhat).
     bce_per = torch.clamp_min(z, 0) - z * y + torch.log1p(torch.exp(-torch.abs(z)))
+    sample_w = None
+    if sample_weights is not None:
+        sample_w = sample_weights.view(-1).to(device=z.device, dtype=z.dtype)
+        bce_per = bce_per * sample_w
 
     total = z.new_zeros(())  # Accumulator for sum_j CE_j(y, yhat) / CE_j(y, p_j).
     unique_conds = torch.unique(c)  # Iterate over observed classes only.
-    N = y.numel()  # Total samples for final normalization by sum_j N_j.
+    total_weight = sample_w.sum() if sample_w is not None else y.numel()
 
     for cid in unique_conds:
         mask = (c == cid)  # Select samples in this class j.
         num = bce_per[mask].sum()  # Numerator CE_j(y, yhat) over class j.
         yj = y[mask]  # Labels for class j to compute base rate p_j.
-        n = mask.sum()  # N_j: number of samples in this class.
-        ones = yj.sum()  # Count of positives in class j.
-        zeros = n.to(y.dtype) - ones  # Count of negatives in class j.
+        if sample_w is not None:
+            wj = sample_w[mask]
+            n = wj.sum()
+            ones = (wj * yj).sum()
+            zeros = n - ones
+        else:
+            n = mask.sum()  # N_j: number of samples in this class.
+            ones = yj.sum()  # Count of positives in class j.
+            zeros = n.to(y.dtype) - ones  # Count of negatives in class j.
         if base_rates is not None:
             idx = cid.item()
             if 0 <= idx < base_rates.numel():
@@ -183,7 +205,8 @@ def localized_entropy(
 
         total += class_term  # Sum normalized class terms across all classes.
 
-    loss = total / max(N, 1)  # Final LE: average by total samples sum_j N_j.
+    denom = total_weight if isinstance(total_weight, torch.Tensor) else torch.tensor(total_weight, dtype=z.dtype, device=z.device)
+    loss = total / denom.clamp_min(1.0)  # Final LE: average by total weight.
     if reduction == "sum":
-        return loss * N  # Return un-averaged total when requested.
+        return loss * denom  # Return un-averaged total when requested.
     return loss

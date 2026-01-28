@@ -11,6 +11,7 @@ class ConditionDataset(Dataset):
         conds,
         labels,
         x_cat=None,
+        weights=None,
         share_memory: bool = False,
     ):
         """Wrap numeric/categorical features with condition/label targets."""
@@ -24,8 +25,12 @@ class ConditionDataset(Dataset):
         self.x_cat = x_cat
         self.c = torch.as_tensor(conds, dtype=torch.long).contiguous()
         self.y = torch.as_tensor(labels, dtype=torch.float32).contiguous()
+        if weights is None:
+            weights = torch.ones((len(labels),), dtype=torch.float32)
+        self.w = torch.as_tensor(weights, dtype=torch.float32).contiguous()
+        assert self.w.ndim == 1 and self.w.shape[0] == len(labels)
         if share_memory:
-            for tensor in (self.x, self.x_cat, self.c, self.y):
+            for tensor in (self.x, self.x_cat, self.c, self.y, self.w):
                 if tensor.device.type == "cpu":
                     tensor.share_memory_()
 
@@ -40,6 +45,7 @@ class ConditionDataset(Dataset):
             self.x_cat[idx],
             self.c[idx],
             self.y[idx],
+            self.w[idx],
         )
 
 

@@ -273,6 +273,12 @@
     "extra_feature_dist": {
       "mean": 0.0,
       "std": 1.0
+    },
+    "reweighting": {
+      "enabled": false,
+      "mode": "fixed",
+      "negative_removal_n": 10,
+      "base_rate_log10_floor": 1e-06
     }
   },
   "plots": {

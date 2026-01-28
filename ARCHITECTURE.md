@@ -45,6 +45,9 @@ Step-by-step pipeline:
 - Training/eval split uses `train_split` with a deterministic RNG.
 - Optional per-condition balancing occurs when
   `ctr.balance_by_condition=true`.
+- Optional synthetic negative downsampling/weights are applied to the
+  training split when `synthetic.reweighting.enabled=true` (evaluation
+  splits remain unweighted).
 - Optional feature standardization happens via
   `localized_entropy/data/common.py`.
 - Dataloaders:
@@ -52,6 +55,7 @@ Step-by-step pipeline:
     `TensorBatchLoader` is used to stage tensors on GPU.
   - Otherwise, standard PyTorch `DataLoader` is used with a
     worker fallback strategy.
+  - Batches include per-sample weights (all ones unless synthetic reweighting is enabled).
 
 4) Diagnostics before training
 - Feature stats, condition stats, and label stats are printed via
@@ -81,6 +85,8 @@ Step-by-step pipeline:
 - Supports two loss modes:
   - Localized Entropy (`localized_entropy/losses.py`).
   - BCE (`torch.nn.BCEWithLogitsLoss`).
+- When per-sample weights are provided (synthetic reweighting), BCE and
+  LE scale each sample by its weight and normalize by total weight.
 - When configured, BCE/LE use per-loss training overrides for
   `epochs`, `lr`, and `batch_size`, rebuilding dataloaders per loss to
   honor different batch sizes.
@@ -188,6 +194,9 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
 - When `synthetic.use_true_base_rates_for_le=true`, LE uses the true
   per-condition mean probabilities (from synthetic `probs`) instead of
   label-derived rates to avoid zero-positive collapse.
+- When `synthetic.reweighting.enabled=true`, the training split is
+  downsampled by condition for negative labels and the kept negatives
+  receive per-sample weights (positives are kept with weight 1).
 
 ## Losses and metrics
 

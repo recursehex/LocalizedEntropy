@@ -68,6 +68,7 @@ def _print_le_batch_inputs(
     x_cat: torch.Tensor,
     c: torch.Tensor,
     y: torch.Tensor,
+    w: Optional[torch.Tensor] = None,
 ) -> None:
     """Print training batch inputs that feed the LE loss."""
     print(f"[LE][debug] epoch={epoch} batch={batch_idx} input features")
@@ -75,6 +76,8 @@ def _print_le_batch_inputs(
     print(_summarize_tensor("x_cat", x_cat))
     print(_summarize_tensor("conditions", c))
     print(_summarize_tensor("targets", y))
+    if w is not None:
+        print(_summarize_tensor("weights", w))
 
 
 @torch.no_grad()
@@ -86,14 +89,16 @@ def compute_base_rates_from_loader(
     non_blocking: bool = False,
 ) -> torch.Tensor:
     """Compute per-condition base rates from a full pass over a loader."""
-    counts = torch.zeros(int(num_conditions), dtype=torch.long, device=device)
+    counts = torch.zeros(int(num_conditions), dtype=dtype, device=device)
     sum_ones = torch.zeros(int(num_conditions), dtype=dtype, device=device)
-    for _, _, c, y in loader:
+    for batch in loader:
+        _, _, c, y, w = batch
         c = c.to(device, non_blocking=non_blocking).view(-1).to(torch.long)
         y = y.to(device, non_blocking=non_blocking).view(-1).to(dtype)
-        counts += torch.bincount(c, minlength=int(num_conditions))
-        sum_ones += torch.bincount(c, weights=y, minlength=int(num_conditions))
-    denom = counts.clamp_min(1).to(dtype)
+        w = w.to(device, non_blocking=non_blocking).view(-1).to(dtype)
+        counts += torch.bincount(c, weights=w, minlength=int(num_conditions))
+        sum_ones += torch.bincount(c, weights=w * y, minlength=int(num_conditions))
+    denom = counts.clamp_min(1)
     rates = sum_ones / denom
     rates = rates.masked_fill(counts == 0, torch.nan)
     return rates
@@ -116,8 +121,9 @@ def evaluate(
     preds_all = []
     verified_cuda_batch = False
     loss_mode = loss_mode.lower().strip()
-    bce_loss = nn.BCEWithLogitsLoss()
-    for x, x_cat, c, y in loader:
+    bce_loss = nn.BCEWithLogitsLoss(reduction="none")
+    for batch in loader:
+        x, x_cat, c, y, _ = batch
         x = x.to(device, non_blocking=non_blocking)
         x_cat = x_cat.to(device, non_blocking=non_blocking)
         c = c.to(device, non_blocking=non_blocking)
@@ -143,7 +149,7 @@ def evaluate(
                     if condition_weights is not None else None),
             )
         elif loss_mode == "bce":
-            loss = bce_loss(logits, y)
+            loss = bce_loss(logits, y).mean()
         else:
             raise ValueError(f"Unsupported loss_mode: {loss_mode}")
         total_loss += float(loss.item()) * x.size(0)
@@ -166,7 +172,8 @@ def predict_probs(
     model.eval()
     preds_all = []
     verified_cuda_batch = False
-    for x, x_cat, c, _ in loader:
+    for batch in loader:
+        x, x_cat, c, _, _ = batch
         x = x.to(device, non_blocking=non_blocking)
         x_cat = x_cat.to(device, non_blocking=non_blocking)
         c = c.to(device, non_blocking=non_blocking)
@@ -325,13 +332,15 @@ def train_with_epoch_plots(
         verified_cuda_batch = False
         epoch_start = time.time()
         total_batches = len(train_loader) if hasattr(train_loader, "__len__") else None
-        for batch_idx, (x, x_cat, c, y) in enumerate(train_loader, start=1):
+        for batch_idx, batch in enumerate(train_loader, start=1):
+            x, x_cat, c, y, w = batch
             x = x.to(device, non_blocking=non_blocking)
             x_cat = x_cat.to(device, non_blocking=non_blocking)
             c = c.to(device, non_blocking=non_blocking)
             y = y.to(device, non_blocking=non_blocking)
+            w = w.to(device, non_blocking=non_blocking)
             if use_le and debug_le_inputs:
-                _print_le_batch_inputs(epoch, batch_idx, x, x_cat, c, y)
+                _print_le_batch_inputs(epoch, batch_idx, x, x_cat, c, y, w)
             if (device.type == "cuda") and (not verified_cuda_batch):
                 tensors = (x, x_cat, c, y)
                 if any(t.device.type != "cuda" for t in tensors):
@@ -352,10 +361,13 @@ def train_with_epoch_plots(
                     condition_weights=(
                         torch.as_tensor(condition_weights, device=logits.device, dtype=logits.dtype)
                         if condition_weights is not None else None),
+                    sample_weights=w,
                     debug=debug_le_inputs,
                 )
             elif loss_mode == "bce":
-                loss = bce_loss(logits, y)
+                bce_per = bce_loss(logits, y)
+                w_flat = w.view(-1).to(logits.dtype)
+                loss = (bce_per.view(-1) * w_flat).sum() / w_flat.sum().clamp_min(1.0)
             else:
                 raise ValueError(f"Unsupported loss_mode: {loss_mode}")
             loss.backward()
@@ -401,8 +413,9 @@ def train_with_epoch_plots(
                     else:
                         print(f"[DEBUG] {name}:\n{param.grad.detach()}")
             opt.step()
-            running += float(loss.item()) * x.size(0)
-            count += x.size(0)
+            batch_weight = float(w.sum().item())
+            running += float(loss.item()) * batch_weight
+            count += batch_weight
             if (
                 eval_every
                 and (eval_batch_callback is not None or track_eval_batch_losses)

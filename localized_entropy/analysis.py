@@ -632,7 +632,8 @@ def collect_logits(
     """Collect logits, targets, and conditions over a loader."""
     model.eval()
     all_logits, all_targets, all_conditions = [], [], []
-    for xb, x_cat, cb, yb in loader:
+    for batch in loader:
+        xb, x_cat, cb, yb, _ = batch
         xb = xb.to(device, non_blocking=non_blocking)
         x_cat = x_cat.to(device, non_blocking=non_blocking)
         cb = cb.to(device, non_blocking=non_blocking)

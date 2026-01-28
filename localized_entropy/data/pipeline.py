@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 from localized_entropy.data.common import standardize_features, train_eval_split
 from localized_entropy.data.ctr import build_ctr_arrays, load_ctr_frames, maybe_cache_filtered_ctr
 from localized_entropy.data.datasets import ConditionDataset, TensorBatchLoader
-from localized_entropy.data.synthetic import build_features, make_dataset
+from localized_entropy.data.synthetic import build_features, compute_negative_reweighting, make_dataset
 from localized_entropy.utils import is_notebook
 
 
@@ -29,6 +29,9 @@ class DatasetSplits:
     c_test: Optional[np.ndarray]
     p_train: Optional[np.ndarray]
     p_eval: Optional[np.ndarray]
+    w_train: np.ndarray
+    w_eval: np.ndarray
+    w_test: Optional[np.ndarray]
     feature_names: list
     num_conditions: int
     cat_sizes: list
@@ -141,12 +144,14 @@ def build_dataloaders(
             torch.as_tensor(splits.x_cat_train, dtype=torch.long, device=device),
             torch.as_tensor(splits.c_train, dtype=torch.long, device=device),
             torch.as_tensor(splits.y_train, dtype=torch.float32, device=device),
+            torch.as_tensor(splits.w_train, dtype=torch.float32, device=device),
         )
         eval_tensors = (
             torch.as_tensor(splits.x_eval, dtype=torch.float32, device=device),
             torch.as_tensor(splits.x_cat_eval, dtype=torch.long, device=device),
             torch.as_tensor(splits.c_eval, dtype=torch.long, device=device),
             torch.as_tensor(splits.y_eval, dtype=torch.float32, device=device),
+            torch.as_tensor(splits.w_eval, dtype=torch.float32, device=device),
         )
         train_loader = TensorBatchLoader(train_tensors, batch_size=batch_size, shuffle=True)
         eval_loader = TensorBatchLoader(eval_tensors, batch_size=batch_size, shuffle=False)
@@ -157,6 +162,7 @@ def build_dataloaders(
                 torch.as_tensor(splits.x_cat_test, dtype=torch.long, device=device),
                 torch.as_tensor(splits.c_test, dtype=torch.long, device=device),
                 torch.as_tensor(splits.y_test, dtype=torch.float32, device=device),
+                torch.as_tensor(splits.w_test, dtype=torch.float32, device=device),
             )
             test_loader = TensorBatchLoader(test_tensors, batch_size=batch_size, shuffle=False)
         loader_note = (
@@ -171,12 +177,14 @@ def build_dataloaders(
         splits.c_train,
         splits.y_train,
         x_cat=splits.x_cat_train,
+        weights=splits.w_train,
     )
     eval_ds = ConditionDataset(
         splits.x_eval,
         splits.c_eval,
         splits.y_eval,
         x_cat=splits.x_cat_eval,
+        weights=splits.w_eval,
     )
     test_ds = None
     if splits.x_test is not None:
@@ -185,6 +193,7 @@ def build_dataloaders(
             splits.c_test,
             splits.y_test,
             x_cat=splits.x_cat_test,
+            weights=splits.w_test,
         )
 
     loader_common = dict(batch_size=batch_size, drop_last=False, pin_memory=use_cuda)
@@ -345,6 +354,34 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
                 f"kept {len(c_train):,} of {before:,} rows."
             )
 
+    w_train = np.ones((len(y_train),), dtype=np.float32)
+    w_eval = np.ones((len(y_eval),), dtype=np.float32)
+    if source == "synthetic":
+        reweight_cfg = cfg.get("synthetic", {}).get("reweighting") or {}
+        if bool(reweight_cfg.get("enabled", False)):
+            reweight_rng = np.random.default_rng(seed)
+            keep_idx, weights_kept, stats = compute_negative_reweighting(
+                y_train,
+                c_train,
+                cfg["synthetic"],
+                probs=p_train,
+                rng=reweight_rng,
+            )
+            before = len(y_train)
+            x_train = x_train[keep_idx]
+            x_cat_train = x_cat_train[keep_idx]
+            c_train = c_train[keep_idx]
+            y_train = y_train[keep_idx]
+            p_train = _apply_indices(p_train, keep_idx)
+            w_train = weights_kept.astype(np.float32, copy=False)
+            removed = before - len(y_train)
+            mode = stats.get("mode", "unknown")
+            print(
+                "Synthetic reweighting enabled: "
+                f"mode={mode} removed={removed:,} negatives; "
+                f"kept={len(y_train):,} of {before:,} training rows."
+            )
+
     if source == "ctr" and plot_sample_size != 0:
         if len(y_train) == 0:
             print("[WARN] CTR plot sample requested but training data is empty.")
@@ -368,6 +405,7 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
             y_test = np.zeros((len(xnum_test),), dtype=np.float32)
     else:
         xcat_test = None
+    w_test = np.ones((len(y_test),), dtype=np.float32) if y_test is not None else None
 
     shuffle_test = bool(data_cfg.get("shuffle_test", True))
     if shuffle_test and xnum_test is not None:
@@ -380,6 +418,8 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
             conds_test = conds_test[test_idx]
         if y_test is not None:
             y_test = y_test[test_idx]
+        if w_test is not None:
+            w_test = w_test[test_idx]
 
     if standardize:
         x_train_n, x_eval_n, x_test_n, normalizer = standardize_features(
@@ -404,6 +444,9 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
         c_test=conds_test,
         p_train=p_train,
         p_eval=p_eval,
+        w_train=w_train,
+        w_eval=w_eval,
+        w_test=w_test,
         feature_names=feature_names,
         num_conditions=num_conditions,
         cat_sizes=cat_sizes,

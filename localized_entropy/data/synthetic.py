@@ -504,3 +504,101 @@ def build_features(dataset: Dict[str, np.ndarray], cfg: Dict) -> Dict[str, np.nd
         "xnum": xnum,
         "feature_names": feature_names,
     }
+
+
+def compute_negative_reweighting(
+    labels: np.ndarray,
+    conds: np.ndarray,
+    cfg: Dict,
+    *,
+    probs: Optional[np.ndarray] = None,
+    rng: Optional[np.random.Generator] = None,
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, object]]:
+    """Downsample negative samples per condition and return keep indices + weights."""
+    reweight_cfg = cfg.get("reweighting", {}) if isinstance(cfg, dict) else {}
+    enabled = bool(reweight_cfg.get("enabled", False))
+    n_total = int(labels.shape[0])
+    keep_all = np.arange(n_total, dtype=np.int64)
+    if not enabled:
+        weights = np.ones((n_total,), dtype=np.float32)
+        return keep_all, weights, {"enabled": False}
+
+    if rng is None:
+        rng = np.random.default_rng()
+
+    mode = str(reweight_cfg.get("mode", "fixed")).lower().strip()
+    if mode not in {"fixed", "adjustable"}:
+        raise ValueError(f"Unknown synthetic reweighting mode '{mode}'.")
+
+    base_n = float(reweight_cfg.get("negative_removal_n", 0.0))
+    if base_n < 0:
+        raise ValueError("synthetic.reweighting.negative_removal_n must be >= 0.")
+
+    base_rate_floor = float(reweight_cfg.get("base_rate_log10_floor", 1e-6))
+    base_rate_floor = max(base_rate_floor, 1e-12)
+
+    labels_flat = np.asarray(labels, dtype=np.float32).reshape(-1)
+    conds_flat = np.asarray(conds, dtype=np.int64).reshape(-1)
+    num_conditions = int(conds_flat.max() + 1) if conds_flat.size else 0
+
+    base_rates = None
+    if mode == "adjustable":
+        if probs is None:
+            values = labels_flat
+        else:
+            values = np.asarray(probs, dtype=np.float32).reshape(-1)
+        sums = np.bincount(conds_flat, weights=values, minlength=num_conditions)
+        counts = np.bincount(conds_flat, minlength=num_conditions)
+        base_rates = np.divide(
+            sums,
+            counts,
+            out=np.zeros_like(sums, dtype=np.float64),
+            where=counts > 0,
+        )
+        base_rates = np.clip(base_rates, base_rate_floor, 1.0)
+
+    keep_idx = []
+    weights = np.ones((n_total,), dtype=np.float32)
+    removal_by_condition = np.zeros((num_conditions,), dtype=np.int64)
+    kept_neg_by_condition = np.zeros((num_conditions,), dtype=np.int64)
+    for cond_id in range(num_conditions):
+        cond_mask = (conds_flat == cond_id)
+        if not np.any(cond_mask):
+            continue
+        neg_idx = np.flatnonzero(cond_mask & (labels_flat <= 0.0))
+        pos_idx = np.flatnonzero(cond_mask & (labels_flat > 0.0))
+
+        removal_n = base_n
+        if mode == "adjustable":
+            base_rate = float(base_rates[cond_id]) if base_rates is not None else 0.0
+            removal_n = base_n * abs(np.log10(max(base_rate, base_rate_floor)))
+        removal_n = int(round(removal_n))
+        removal_n = max(removal_n, 0)
+        removal_by_condition[cond_id] = removal_n
+
+        keep_neg = neg_idx
+        if removal_n > 0 and neg_idx.size > 0:
+            group_size = removal_n + 1
+            keep_count = max(1, int(np.ceil(neg_idx.size / group_size)))
+            if keep_count < neg_idx.size:
+                keep_neg = rng.choice(neg_idx, size=keep_count, replace=False)
+            weights[keep_neg] = float(removal_n)
+        kept_neg_by_condition[cond_id] = int(keep_neg.size)
+        if pos_idx.size > 0:
+            keep_idx.append(pos_idx)
+        if keep_neg.size > 0:
+            keep_idx.append(keep_neg)
+
+    if keep_idx:
+        keep_idx = np.concatenate(keep_idx).astype(np.int64, copy=False)
+        keep_idx = rng.permutation(keep_idx)
+    else:
+        keep_idx = np.array([], dtype=np.int64)
+
+    return keep_idx, weights[keep_idx], {
+        "enabled": True,
+        "mode": mode,
+        "negative_removal_n": base_n,
+        "removal_by_condition": removal_by_condition,
+        "kept_negatives_by_condition": kept_neg_by_condition,
+    }

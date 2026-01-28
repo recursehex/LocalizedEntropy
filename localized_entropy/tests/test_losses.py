@@ -67,6 +67,26 @@ def test_localized_entropy_condition_weights_scale_terms():
     assert loss.item() == pytest.approx(expected, rel=1e-6, abs=1e-8)
 
 
+def test_localized_entropy_sample_weights_scale_loss():
+    """Validate per-sample weights scale LE numerator/denominator."""
+    logits = torch.zeros(2, dtype=torch.float64)
+    targets = torch.tensor([1.0, 0.0], dtype=torch.float64)
+    conds = torch.zeros(2, dtype=torch.long)
+    base_rates = torch.tensor([0.5], dtype=torch.float64)
+    sample_weights = torch.tensor([2.0, 1.0], dtype=torch.float64)
+
+    loss = localized_entropy(
+        logits,
+        targets,
+        conds,
+        base_rates=base_rates,
+        sample_weights=sample_weights,
+    )
+    expected = 1.0 / 3.0
+
+    assert loss.item() == pytest.approx(expected, rel=1e-6, abs=1e-8)
+
+
 def test_localized_entropy_extreme_logits_are_finite():
     """Ensure extreme logits produce a finite LE loss."""
     logits = torch.tensor([1000.0, -1000.0, 1000.0, -1000.0], dtype=torch.float64)
