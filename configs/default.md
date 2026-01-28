@@ -238,22 +238,23 @@ These settings are used when `data.source` is `synthetic`.
   `synthetic.extra_feature_dist`.
 - `synthetic.condition_mode`: `random` (default) or `uniform_mean`.
   - `random`: each condition samples its own shape parameters.
-  - `uniform_mean`: conditions share one sampled shape and are rescaled
-    to a target mean probability per condition.
-- `synthetic.uniform_mean_log10_range`: Log10 range for mean
-  probabilities used when `condition_mode=uniform_mean`
-  (evenly spaced across conditions).
-- `synthetic.uniform_log10_band_fraction`: Width of the per-condition
-  log10 band as a fraction of the spacing between mean targets. Values
-  below 1.0 ensure non-overlapping ranges; values above 1.0 overlap.
-  Set to 0 to disable banding (unbounded spread) for `uniform_log10_shape=normal`.
-- `synthetic.uniform_log10_shape`: Shape mode for uniform-mean
-  distributions. `normal` samples a truncated log10-normal curve with a
-  band centered on the solved mean; `rank_normal` maps ranked
-  probabilities to a log10 normal curve; `scaled` preserves the
-  original shape with rescaling.
-- `synthetic.uniform_log10_sigma_fraction`: Fraction of band width used
-  as the log10 standard deviation when `uniform_log10_shape=rank_normal`.
+  - `uniform_mean`/`uniform_log10`: generate per-condition probabilities
+    from log10-normal bell curves while preserving feature ranks.
+- `synthetic.uniform_log10_means`: List of log10 probability means (one
+  per condition) used in uniform mode.
+- `synthetic.uniform_log10_std`: Standard deviation in log10 space for
+  the bell curve used in uniform mode.
+- `synthetic.uniform_log10_shape`: Shape mode for uniform distributions.
+  `rank_normal` (default) maps ranked base probabilities into a
+  log10-normal bell curve; other values fall back to legacy rescaling.
+- `synthetic.uniform_mean_log10_range`: Legacy log10 range for mean
+  probabilities when `uniform_log10_means` is not provided.
+- `synthetic.uniform_log10_band_fraction`: Optional width of the
+  per-condition log10 band as a fraction of the spacing between means
+  (legacy rescaling mode only).
+- `synthetic.uniform_log10_sigma_fraction`: Legacy fallback for log10
+  std (spacing * fraction) when `uniform_log10_std` is not set and
+  `uniform_log10_means` is absent.
 - `synthetic.use_true_base_rates_for_le`: If true, LE denominators use
   per-condition mean probabilities (from synthetic `probs`) instead of
   label-derived rates to avoid zero-positive collapse at very low means.

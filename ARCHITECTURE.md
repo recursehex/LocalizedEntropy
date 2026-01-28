@@ -179,14 +179,12 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
 - Builds numeric features based on `synthetic.numeric_features`
   (supported values: `age`, `net_worth`, `log10_net_worth`, and
   `noise*`).
-- Supports `synthetic.condition_mode=uniform_mean` to keep a shared
-  shape across conditions and rescale to per-condition mean
-  probabilities (log10-uniform range), with optional non-overlapping
-  or overlapping log10 bands via `synthetic.uniform_log10_band_fraction`.
-- Optional `synthetic.uniform_log10_shape=normal` samples a truncated
-  log10-normal bell curve per condition (band centered on the solved
-  mean); `rank_normal` maps probability ranks to a bell-shaped log10
-  distribution within each band.
+- Supports `synthetic.condition_mode=uniform_mean`/`uniform_log10` to map
+  feature-driven base probabilities into a per-condition log10-normal
+  bell curve with explicit centers (`synthetic.uniform_log10_means`) and
+  standard deviation (`synthetic.uniform_log10_std`). The mapping keeps
+  the rank ordering from the generated features so the model can learn
+  the underlying signal.
 - When `synthetic.use_true_base_rates_for_le=true`, LE uses the true
   per-condition mean probabilities (from synthetic `probs`) instead of
   label-derived rates to avoid zero-positive collapse.

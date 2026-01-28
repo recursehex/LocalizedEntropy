@@ -38,7 +38,7 @@ The notebook stays small and delegates everything to the modules in `localized_e
   - `definitions` holds per-experiment overrides (e.g., `bce_baseline`, `small_net`).
 - `data.source`: `"ctr"` or `"synthetic"`.
 - `ctr` section: file paths, numeric feature columns, condition column, filtering rules, and preprocessing flags.
-- `synthetic` section: number of conditions, sample counts, parameter ranges, and `numeric_features` (ordered feature list).
+- `synthetic` section: number of conditions, sample counts, parameter ranges, `numeric_features`, and optional uniform log10 settings (`uniform_log10_means`, `uniform_log10_std`).
 - `model`: hidden sizes, embedding dimension, activation/norm, dropout.
 - `training`: epochs, learning rate, batch size, loss mode, and loss comparisons.
 - `plots`: toggles for every chart and summary table.

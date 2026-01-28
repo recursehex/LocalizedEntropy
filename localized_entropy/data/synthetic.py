@@ -127,6 +127,42 @@ def _ranked_normal_probs(
     return probs, clipped
 
 
+def _ranked_log10_normal_probs(
+    base_probs: np.ndarray,
+    mu_log10: float,
+    sigma_log10: float,
+    log10_min: Optional[float] = None,
+    log10_max: Optional[float] = 0.0,
+) -> Tuple[np.ndarray, bool]:
+    """Map base-prob ranks to a log10-normal distribution with given mean/std."""
+    n = base_probs.size
+    if n == 0:
+        return base_probs.astype(np.float32), False
+
+    order = np.argsort(base_probs, kind="mergesort")
+    q = np.empty(n, dtype=np.float64)
+    q[order] = (np.arange(n) + 0.5) / n
+    q = np.clip(q, 1e-6, 1.0 - 1e-6)
+    z = norm.ppf(q)
+
+    if sigma_log10 <= 0:
+        log10p = np.full(n, mu_log10, dtype=np.float64)
+    else:
+        log10p = mu_log10 + sigma_log10 * z
+
+    clipped = False
+    if log10_max is not None:
+        clipped = clipped or bool(np.any(log10p > log10_max))
+        log10p = np.minimum(log10p, log10_max)
+    if log10_min is not None:
+        clipped = clipped or bool(np.any(log10p < log10_min))
+        log10p = np.maximum(log10p, log10_min)
+
+    probs = (10.0 ** log10p).astype(np.float32, copy=False)
+    probs = np.clip(probs, 0.0, 1.0)
+    return probs, clipped
+
+
 def _solve_mu_log10_for_target(target_mean: float, sigma_log10: float) -> float:
     """Solve for log10 mean of a log10-normal."""
     if sigma_log10 <= 0:
@@ -268,37 +304,66 @@ def make_dataset(
     min_samples = int(cfg["min_samples_per_condition"])
     max_samples = int(cfg["max_samples_per_condition"])
     mode = str(cfg.get("condition_mode", "random")).lower().strip()
-    if mode not in {"random", "uniform_mean"}:
+    if mode not in {"random", "uniform_mean", "uniform_log10", "uniform"}:
         raise ValueError(f"Unknown synthetic condition_mode '{mode}'.")
 
-    uniform_targets = None
-    shared_params = None
-    if mode == "uniform_mean":
-        mean_range = cfg.get("uniform_mean_log10_range", [-1.0, -10.0])
-        if not isinstance(mean_range, (list, tuple)) or len(mean_range) != 2:
-            raise ValueError("uniform_mean_log10_range must be a 2-item list.")
-        start, end = float(mean_range[0]), float(mean_range[1])
-        log10_means = np.linspace(start, end, num_conditions)
-        uniform_targets = 10.0 ** log10_means
-        band_fraction = cfg.get("uniform_log10_band_fraction", 0.6)
+    uniform_log10_means = None
+    uniform_sigma_log10 = None
+    uniform_shape_mode = None
+    uniform_band_width = None
+    uniform_log10_min = None
+    uniform_log10_max = 0.0
+    if mode in {"uniform_mean", "uniform_log10", "uniform"}:
+        log10_means_cfg = cfg.get("uniform_log10_means")
+        if log10_means_cfg is not None:
+            if not isinstance(log10_means_cfg, (list, tuple)):
+                raise ValueError("uniform_log10_means must be a list of log10 values.")
+            if len(log10_means_cfg) != num_conditions:
+                raise ValueError(
+                    "uniform_log10_means length must match num_conditions "
+                    f"({len(log10_means_cfg)} != {num_conditions})."
+                )
+            uniform_log10_means = np.array([float(v) for v in log10_means_cfg], dtype=np.float64)
+        else:
+            mean_range = cfg.get("uniform_mean_log10_range", [-1.0, -10.0])
+            if not isinstance(mean_range, (list, tuple)) or len(mean_range) != 2:
+                raise ValueError("uniform_mean_log10_range must be a 2-item list.")
+            start, end = float(mean_range[0]), float(mean_range[1])
+            uniform_log10_means = np.linspace(start, end, num_conditions)
+
+        uniform_sigma_log10 = cfg.get("uniform_log10_std")
+        if uniform_sigma_log10 is None:
+            if log10_means_cfg is not None:
+                raise ValueError("uniform_log10_std must be set when using uniform_log10_means.")
+            sigma_fraction = float(cfg.get("uniform_log10_sigma_fraction", 0.3))
+            if num_conditions > 1:
+                span = float(np.max(uniform_log10_means) - np.min(uniform_log10_means))
+                spacing = span / (num_conditions - 1)
+            else:
+                spacing = 1.0
+            uniform_sigma_log10 = spacing * max(sigma_fraction, 0.0)
+        else:
+            uniform_sigma_log10 = float(uniform_sigma_log10)
+
+        uniform_shape_mode = str(cfg.get("uniform_log10_shape", "rank_normal")).lower().strip()
+        band_fraction = cfg.get("uniform_log10_band_fraction", 0.0)
         band_fraction = float(band_fraction) if band_fraction is not None else 0.0
-        shape_mode = str(cfg.get("uniform_log10_shape", "scaled")).lower().strip()
-        sigma_fraction = float(cfg.get("uniform_log10_sigma_fraction", 0.3))
-        span = abs(start - end)
-        spacing = span / (num_conditions - 1) if num_conditions > 1 else 1.0
+        if num_conditions > 1:
+            span = float(np.max(uniform_log10_means) - np.min(uniform_log10_means))
+            spacing = span / (num_conditions - 1)
+        else:
+            spacing = 1.0
         if band_fraction >= 1.0:
             print("[WARN] uniform_log10_band_fraction >= 1; bands will overlap.")
         band_fraction = max(band_fraction, 0.0)
-        band_width = spacing * band_fraction if band_fraction > 0 else None
-        mu_ln, sigma_ln, sig_mu, sig_s, mu_age, sigma_age, _ = _sample_condition_params(cfg, rng)
-        shared_params = (mu_ln, sigma_ln, sig_mu, sig_s, mu_age, sigma_age)
+        uniform_band_width = spacing * band_fraction if band_fraction > 0 else None
 
     ages_all, nw_all, conds_all, labels_all, probs_all = [], [], [], [], []
     clip_conditions = 0
     for cond in range(num_conditions):
         n = int(rng.integers(min_samples, max_samples + 1))
-        if mode == "uniform_mean":
-            mu_ln, sigma_ln, sig_mu, sig_s, mu_age, sigma_age = shared_params
+        if mode in {"uniform_mean", "uniform_log10", "uniform"}:
+            mu_ln, sigma_ln, sig_mu, sig_s, mu_age, sigma_age, interest_scale = _sample_condition_params(cfg, rng)
             net_worth, ages, base_probs = generate_probs(
                 n,
                 mu_ln,
@@ -307,63 +372,31 @@ def make_dataset(
                 sig_s,
                 mu_age,
                 sigma_age,
-                interest_scale=1.0,
+                interest_scale=interest_scale,
                 min_age=int(cfg["age_min"]),
                 max_age=int(cfg["age_max"]),
                 rng=rng,
             )
-            target_mean = float(uniform_targets[cond])
-            if band_width is not None:
-                band_lo_log = log10_means[cond] - 0.5 * band_width
-                band_hi_log = log10_means[cond] + 0.5 * band_width
-                prob_min = float(10.0 ** band_lo_log)
-                prob_max = float(10.0 ** band_hi_log)
-            else:
-                band_lo_log = None
-                band_hi_log = None
-                prob_min = 0.0
-                prob_max = 1.0
-            if shape_mode in {"normal", "gaussian"}:
-                sigma_log10 = spacing * max(sigma_fraction, 0.0)
-                if band_width is None:
-                    mu_log10 = _solve_mu_log10_for_target(target_mean, sigma_log10)
-                    log10p = rng.normal(loc=mu_log10, scale=sigma_log10, size=n).astype(
-                        np.float32, copy=False
-                    )
-                    probs = np.power(10.0, log10p).astype(np.float32, copy=False)
-                    clipped = bool(np.any(probs > 1.0))
-                    if clipped:
-                        probs = np.clip(probs, 0.0, 1.0)
-                else:
-                    mu_log10 = _solve_mu_log10_for_target_centered(
-                        target_mean,
-                        band_width,
-                        sigma_log10,
-                    )
-                    band_lo_log = mu_log10 - 0.5 * band_width
-                    band_hi_log = mu_log10 + 0.5 * band_width
-                    log10p, clipped = _sample_truncated_log10_normal(
-                        rng,
-                        n,
-                        mu_log10,
-                        sigma_log10,
-                        band_lo_log,
-                        band_hi_log,
-                    )
-                    probs = (10.0 ** log10p).astype(np.float32, copy=False)
-            elif shape_mode == "rank_normal":
-                sigma_log10 = spacing * max(sigma_fraction, 0.0)
-                if band_lo_log is None or band_hi_log is None:
-                    band_lo_log = log10_means[cond] - 0.5 * spacing
-                    band_hi_log = log10_means[cond] + 0.5 * spacing
-                probs, clipped = _ranked_normal_probs(
+            mu_log10 = float(uniform_log10_means[cond])
+            if uniform_shape_mode in {"rank_normal", "rank_log10", "bell", "gaussian", "normal"}:
+                probs, clipped = _ranked_log10_normal_probs(
                     base_probs,
-                    target_mean,
-                    band_lo_log,
-                    band_hi_log,
-                    sigma_log10,
+                    mu_log10=mu_log10,
+                    sigma_log10=uniform_sigma_log10,
+                    log10_min=uniform_log10_min,
+                    log10_max=uniform_log10_max,
                 )
             else:
+                # Legacy fallback: rescale base probs to a target mean in probability space.
+                target_mean = float(10.0 ** mu_log10)
+                if uniform_band_width is not None:
+                    band_lo_log = mu_log10 - 0.5 * uniform_band_width
+                    band_hi_log = mu_log10 + 0.5 * uniform_band_width
+                    prob_min = float(10.0 ** band_lo_log)
+                    prob_max = float(10.0 ** band_hi_log)
+                else:
+                    prob_min = 0.0
+                    prob_max = 1.0
                 probs, _, clipped = _rescale_probs_to_mean_with_bounds(
                     base_probs,
                     target_mean,
