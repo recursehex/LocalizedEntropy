@@ -27,6 +27,12 @@ def build_comparison_frame(
     """Build a per-condition comparison frame for BCE vs LE."""
     bce_cal = per_condition_calibration(bce_preds, labels, conds)
     le_cal = per_condition_calibration(le_preds, labels, conds)
+    bce_logloss = per_condition_logloss(bce_preds, labels, conds).rename(
+        columns={"logloss": "bce_logloss"}
+    )
+    le_logloss = per_condition_logloss(le_preds, labels, conds).rename(
+        columns={"logloss": "le_logloss"}
+    )
 
     bce_cal = bce_cal.rename(
         columns={
@@ -49,6 +55,16 @@ def build_comparison_frame(
         le_cal[["condition", "le_pred_mean", "le_calibration"]],
         on="condition",
         how="outer",
+    )
+    merged = merged.merge(
+        bce_logloss[["condition", "bce_logloss"]],
+        on="condition",
+        how="left",
+    )
+    merged = merged.merge(
+        le_logloss[["condition", "le_logloss"]],
+        on="condition",
+        how="left",
     )
     merged = merged.merge(
         bce_le[["condition", "bce_le_ratio"]],
@@ -129,6 +145,39 @@ def format_comparison_table(
                 parts.append(text.ljust(widths[col]))
         lines.append("  ".join(parts))
     return "\n".join(lines)
+
+
+def per_condition_logloss(
+    preds: np.ndarray,
+    labels: np.ndarray,
+    conds: np.ndarray,
+    eps: float = 1e-12,
+) -> pd.DataFrame:
+    """Compute per-condition BCE logloss."""
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    c = np.asarray(conds, dtype=np.int64).reshape(-1)
+    if c.size == 0:
+        return pd.DataFrame(columns=["condition", "logloss"])
+    max_id = int(c.max())
+    if max_id < 0:
+        return pd.DataFrame(columns=["condition", "logloss"])
+    p_clip = np.clip(p, eps, 1.0 - eps)
+    per = -(y * np.log(p_clip) + (1.0 - y) * np.log(1.0 - p_clip))
+    counts = np.bincount(c, minlength=max_id + 1)
+    sums = np.bincount(c, weights=per, minlength=max_id + 1)
+    logloss = np.divide(
+        sums,
+        counts,
+        out=np.full_like(sums, np.nan, dtype=np.float64),
+        where=counts > 0,
+    )
+    return pd.DataFrame(
+        {
+            "condition": np.arange(max_id + 1, dtype=np.int64),
+            "logloss": logloss,
+        }
+    )
 
 
 def summarize_model_metrics(
@@ -265,6 +314,21 @@ def format_bce_le_summary(
         """Format metric values, preserving NaNs."""
         return "nan" if not np.isfinite(val) else f"{val:.6g}"
 
+    def pct_change(
+        bce_val: float,
+        le_val: float,
+        *,
+        lower_is_better: bool,
+    ) -> str:
+        """Percent change vs BCE baseline."""
+        if not np.isfinite(bce_val) or not np.isfinite(le_val):
+            return "n/a"
+        if abs(bce_val) <= 1e-12:
+            return "n/a"
+        delta = (bce_val - le_val) if lower_is_better else (le_val - bce_val)
+        pct = 100.0 * delta / bce_val
+        return f"{pct:+.2f}%"
+
     small_threshold_bce = bce_metrics.get("ece_small_threshold")
     small_threshold_le = le_metrics.get("ece_small_threshold")
     if (
@@ -279,13 +343,39 @@ def format_bce_le_summary(
     else:
         small_threshold_text = f" (BCE p<= {fmt(small_threshold_bce)}, LE p<= {fmt(small_threshold_le)})"
 
+    acc_pct = pct_change(
+        bce_metrics["accuracy"],
+        le_metrics["accuracy"],
+        lower_is_better=False,
+    )
+    logloss_pct = pct_change(
+        bce_metrics["logloss"],
+        le_metrics["logloss"],
+        lower_is_better=True,
+    )
+    brier_pct = pct_change(
+        bce_metrics["brier"],
+        le_metrics["brier"],
+        lower_is_better=True,
+    )
+    ece_pct = pct_change(
+        bce_metrics["ece"],
+        le_metrics["ece"],
+        lower_is_better=True,
+    )
+    ece_small_pct = pct_change(
+        bce_metrics["ece_small"],
+        le_metrics["ece_small"],
+        lower_is_better=True,
+    )
+
     lines = [
         "BCE vs LE summary (lower is better for logloss/brier/ece):",
-        f"Accuracy@0.5: BCE={fmt(bce_metrics['accuracy'])} | LE={fmt(le_metrics['accuracy'])} -> {acc_winner}",
-        f"Logloss:       BCE={fmt(bce_metrics['logloss'])} | LE={fmt(le_metrics['logloss'])} -> {logloss_winner}",
-        f"Brier:         BCE={fmt(bce_metrics['brier'])} | LE={fmt(le_metrics['brier'])} -> {brier_winner}",
-        f"ECE:           BCE={fmt(bce_metrics['ece'])} | LE={fmt(le_metrics['ece'])} -> {ece_winner}",
-        f"ECE small{small_threshold_text}: BCE={fmt(bce_metrics['ece_small'])} | LE={fmt(le_metrics['ece_small'])} -> {ece_small_winner}",
+        f"Accuracy@0.5: BCE={fmt(bce_metrics['accuracy'])} | LE={fmt(le_metrics['accuracy'])} -> {acc_winner} (pct_change={acc_pct})",
+        f"Logloss:       BCE={fmt(bce_metrics['logloss'])} | LE={fmt(le_metrics['logloss'])} -> {logloss_winner} (pct_change={logloss_pct})",
+        f"Brier:         BCE={fmt(bce_metrics['brier'])} | LE={fmt(le_metrics['brier'])} -> {brier_winner} (pct_change={brier_pct})",
+        f"ECE:           BCE={fmt(bce_metrics['ece'])} | LE={fmt(le_metrics['ece'])} -> {ece_winner} (pct_change={ece_pct})",
+        f"ECE small{small_threshold_text}: BCE={fmt(bce_metrics['ece_small'])} | LE={fmt(le_metrics['ece_small'])} -> {ece_small_winner} (pct_change={ece_small_pct})",
     ]
     if eval_conds is not None:
         closeness = summarize_per_condition_closeness(

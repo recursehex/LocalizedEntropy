@@ -124,9 +124,10 @@ Step-by-step pipeline:
 - Optionally compares loss values under alternate loss modes
   (`training.eval_compare_losses`).
 - If both losses are trained, the notebook builds a per-condition
-  comparison table (calibration ratio + LE ratio deltas) using
-  `localized_entropy/compare.py`, printing an aligned text table plus a
-  BCE-vs-LE summary (accuracy, logloss, brier, ECE) and a per-condition
+  comparison table (calibration ratios, per-condition BCE logloss for
+  each run, plus LE ratio deltas) using `localized_entropy/compare.py`,
+  printing an aligned text table plus a BCE-vs-LE summary (accuracy,
+  logloss, brier, ECE, with percent change vs BCE) and a per-condition
   abs(1 - calibration) table for quick closeness-to-1 checks.
 
 10) Optional repeated-run significance testing
