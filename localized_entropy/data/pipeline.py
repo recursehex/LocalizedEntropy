@@ -124,6 +124,7 @@ def build_dataloaders(
     cfg: Dict,
     device: torch.device,
     use_cuda: bool,
+    use_mps: bool = False,
     batch_size: Optional[int] = None,
 ) -> LoaderBundle:
     """Construct train/eval/test loaders from prepared splits."""
@@ -135,10 +136,12 @@ def build_dataloaders(
     allow_dataloader_workers = cfg["device"].get("allow_dataloader_workers")
     env_var = cfg["device"].get("num_workers_env", "LOCALIZED_ENTROPY_NUM_WORKERS")
 
-    use_tensor_loader = use_cuda and move_dataset_to_cuda
+    use_accelerator = use_cuda or use_mps
+    device_label = "CUDA" if use_cuda else "MPS" if use_mps else "CPU"
+    use_tensor_loader = use_accelerator and move_dataset_to_cuda
     if use_tensor_loader:
         # Stage datasets on the GPU to avoid per-batch host-to-device copies.
-        print("Staging datasets directly on CUDA for batch sampling.")
+        print(f"Staging datasets directly on {device_label} for batch sampling.")
         train_tensors = (
             torch.as_tensor(splits.x_train, dtype=torch.float32, device=device),
             torch.as_tensor(splits.x_cat_train, dtype=torch.long, device=device),
@@ -166,7 +169,7 @@ def build_dataloaders(
             )
             test_loader = TensorBatchLoader(test_tensors, batch_size=batch_size, shuffle=False)
         loader_note = (
-            f"TensorBatchLoader on CUDA (batches per epoch: {len(train_loader)} / {len(eval_loader)})."
+            f"TensorBatchLoader on {device_label} (batches per epoch: {len(train_loader)} / {len(eval_loader)})."
         )
         if test_loader is not None:
             loader_note += f" | Test batches: {len(test_loader)}"
@@ -248,7 +251,7 @@ def build_dataloaders(
     return LoaderBundle(train_loader, eval_loader, test_loader, loader_note)
 
 
-def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedData:
+def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool, use_mps: bool = False) -> PreparedData:
     """Load/prepare data arrays and return splits, loaders, and plot data."""
     seed = int(cfg["project"]["seed"])
     data_cfg = cfg["data"]
@@ -453,5 +456,5 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool) -> PreparedDat
         cat_cols=cat_cols,
     )
 
-    loaders = build_dataloaders(splits, cfg, device, use_cuda)
+    loaders = build_dataloaders(splits, cfg, device, use_cuda, use_mps)
     return PreparedData(splits=splits, loaders=loaders, normalizer=normalizer, plot_data=plot_data)

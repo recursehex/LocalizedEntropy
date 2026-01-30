@@ -46,6 +46,8 @@ Template model definitions included in `configs/default.json`:
 - `experiment.overrides`: Ad-hoc overrides applied after definitions.
 
 ### device
+- `device.use_mps`: If true and MPS is available, use Apple Silicon GPU (with float32);
+  set to false to force CPU (the notebook then builds models in float64).
 - `device.move_dataset_to_cuda`: If true and CUDA is available, stage
   datasets on GPU and use `TensorBatchLoader`.
 - `device.allow_dataloader_workers`: If true, allow multiprocessing

@@ -83,6 +83,7 @@
     }
   },
   "device": {
+    "use_mps": true,
     "move_dataset_to_cuda": true,
     "allow_dataloader_workers": false,
     "num_workers_env": "LOCALIZED_ENTROPY_NUM_WORKERS"

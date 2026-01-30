@@ -21,7 +21,9 @@ Step-by-step pipeline:
 - Per-loss `training.by_loss` overrides are resolved when each loss is
   trained (BCE vs LE), including `by_source` settings nested under each
   loss for the active data source.
-- Chooses CUDA vs CPU via `localized_entropy/utils.py`.
+- Chooses CUDA vs MPS vs CPU via `localized_entropy/utils.py` and
+  `device.use_mps` in the config; when MPS is explicitly disabled, the
+  notebook builds models with float64 on CPU.
 
 2) Optional CTR filtering + caching (config-driven)
 - `localized_entropy/data/ctr.py` applies `ctr.filter` (or legacy
@@ -51,10 +53,10 @@ Step-by-step pipeline:
 - Optional feature standardization happens via
   `localized_entropy/data/common.py`.
 - Dataloaders:
-  - If CUDA is available and `device.move_dataset_to_cuda=true`,
-    `TensorBatchLoader` is used to stage tensors on GPU.
+  - If a GPU backend is available (CUDA or MPS) and `device.move_dataset_to_cuda=true`,
+    `TensorBatchLoader` is used to stage tensors on the accelerator.
   - Otherwise, standard PyTorch `DataLoader` is used with a
-    worker fallback strategy.
+    worker fallback strategy (CUDA keeps workers at 0 by default for stability).
   - Batches include per-sample weights (all ones unless synthetic reweighting is enabled).
 
 4) Diagnostics before training
@@ -102,6 +104,7 @@ Step-by-step pipeline:
 - When `plots.grad_sq_by_condition=true`, the loop also accumulates
   per-condition mean-squared logits gradients for BCE vs LE, plus
   per-class (label 0/1) gradient MSE to report a class MSE ratio.
+  On MPS, gradient accumulation uses float32 because float64 is unsupported.
   The notebook prints a per-condition LE/BCE gradient MSE ratio table.
 - The notebook can enable raw per-parameter gradient debug prints per
   batch via the `debug_gradients` training flag (WARNING: extremely performance

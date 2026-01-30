@@ -35,17 +35,27 @@ def is_notebook() -> bool:
         return False
 
 
-def init_device(verbose: bool = True):
-    """Initialize CUDA/CPU device and non_blocking flag."""
+def init_device(verbose: bool = True, use_mps: bool = True):
+    """Initialize CUDA/MPS/CPU device selection and non_blocking flag."""
     use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
-    non_blocking = use_cuda
+    mps_available = bool(getattr(torch.backends, "mps", None)) and torch.backends.mps.is_available()
+    use_mps = bool(use_mps) and mps_available
+    if use_cuda:
+        device = torch.device("cuda")
+    elif use_mps:
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+    non_blocking = device.type == "cuda"
     if use_cuda:
         if verbose:
             gpu_name = torch.cuda.get_device_name(device)
             print(f"Using CUDA device: {gpu_name}")
         torch.backends.cudnn.benchmark = True
+    elif use_mps:
+        if verbose:
+            print("Using MPS device (Apple Silicon GPU).")
     else:
         if verbose:
-            print("CUDA not available, defaulting to CPU.")
-    return device, use_cuda, non_blocking
+            print("No GPU backend available; defaulting to CPU.")
+    return device, use_cuda, use_mps, non_blocking

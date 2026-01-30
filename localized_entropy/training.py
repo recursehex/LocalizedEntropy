@@ -11,6 +11,12 @@ from localized_entropy.losses import focal_loss_with_logits, localized_entropy
 from localized_entropy.plotting import plot_eval_log10p_hist
 
 
+def _resolve_model_dtype(model: nn.Module, default: torch.dtype = torch.float32) -> torch.dtype:
+    """Resolve the dtype used by the model parameters."""
+    first_param = next(model.parameters(), None)
+    return first_param.dtype if first_param is not None else default
+
+
 @dataclass
 class GradSqStats:
     """Per-condition and per-class gradient mean-square stats."""
@@ -118,6 +124,7 @@ def evaluate(
 ) -> Tuple[float, np.ndarray]:
     """Evaluate a model and return mean loss plus predictions."""
     model.eval()
+    model_dtype = _resolve_model_dtype(model)
     total_loss = 0.0
     total_count = 0
     preds_all = []
@@ -126,10 +133,10 @@ def evaluate(
     bce_loss = nn.BCEWithLogitsLoss(reduction="none")
     for batch in loader:
         x, x_cat, c, y, _ = batch
-        x = x.to(device, non_blocking=non_blocking)
+        x = x.to(device, non_blocking=non_blocking, dtype=model_dtype)
         x_cat = x_cat.to(device, non_blocking=non_blocking)
         c = c.to(device, non_blocking=non_blocking)
-        y = y.to(device, non_blocking=non_blocking)
+        y = y.to(device, non_blocking=non_blocking, dtype=model_dtype)
         logits = model(x, x_cat, c)
         # Guard against inadvertently running evaluation on CPU when CUDA is expected.
         if (device.type == "cuda") and (not verified_cuda_batch):
@@ -179,11 +186,12 @@ def predict_probs(
 ) -> np.ndarray:
     """Run inference and return sigmoid probabilities."""
     model.eval()
+    model_dtype = _resolve_model_dtype(model)
     preds_all = []
     verified_cuda_batch = False
     for batch in loader:
         x, x_cat, c, _, _ = batch
-        x = x.to(device, non_blocking=non_blocking)
+        x = x.to(device, non_blocking=non_blocking, dtype=model_dtype)
         x_cat = x_cat.to(device, non_blocking=non_blocking)
         c = c.to(device, non_blocking=non_blocking)
         if (device.type == "cuda") and (not verified_cuda_batch):
@@ -257,6 +265,7 @@ def train_with_epoch_plots(
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     train_losses: List[float] = []
     val_losses: List[float] = []
+    model_dtype = _resolve_model_dtype(model)
     loss_mode = loss_mode.lower().strip()
     bce_loss = nn.BCEWithLogitsLoss()
     if loss_mode == "localized_entropy":
@@ -292,6 +301,7 @@ def train_with_epoch_plots(
     grad_sq_counts = None
     grad_sq_class_sums = None
     grad_sq_class_counts = None
+    stats_dtype = None
     if track_grad_sq_sums:
         emb_layer = getattr(model, "embedding", None)
         if isinstance(emb_layer, nn.Embedding):
@@ -299,10 +309,11 @@ def train_with_epoch_plots(
         else:
             raise ValueError("Gradient tracking requires a model with an embedding layer.")
         # Accumulate per-condition gradient squared sums and counts for MSE diagnostics.
-        grad_sq_sums = torch.zeros(num_conds, dtype=torch.float64, device=device)
-        grad_sq_counts = torch.zeros(num_conds, dtype=torch.float64, device=device)
-        grad_sq_class_sums = torch.zeros(2, dtype=torch.float64, device=device)
-        grad_sq_class_counts = torch.zeros(2, dtype=torch.float64, device=device)
+        stats_dtype = torch.float32 if device.type == "mps" else torch.float64
+        grad_sq_sums = torch.zeros(num_conds, dtype=stats_dtype, device=device)
+        grad_sq_counts = torch.zeros(num_conds, dtype=stats_dtype, device=device)
+        grad_sq_class_sums = torch.zeros(2, dtype=stats_dtype, device=device)
+        grad_sq_class_counts = torch.zeros(2, dtype=stats_dtype, device=device)
     if device.type == "cuda":
         first_param = next(model.parameters(), None)
         if (first_param is not None) and (first_param.device.type != "cuda"):
@@ -356,11 +367,11 @@ def train_with_epoch_plots(
         total_batches = len(train_loader) if hasattr(train_loader, "__len__") else None
         for batch_idx, batch in enumerate(train_loader, start=1):
             x, x_cat, c, y, w = batch
-            x = x.to(device, non_blocking=non_blocking)
+            x = x.to(device, non_blocking=non_blocking, dtype=model_dtype)
             x_cat = x_cat.to(device, non_blocking=non_blocking)
             c = c.to(device, non_blocking=non_blocking)
-            y = y.to(device, non_blocking=non_blocking)
-            w = w.to(device, non_blocking=non_blocking)
+            y = y.to(device, non_blocking=non_blocking, dtype=model_dtype)
+            w = w.to(device, non_blocking=non_blocking, dtype=model_dtype)
             if use_le and debug_le_inputs:
                 _print_le_batch_inputs(epoch, batch_idx, x, x_cat, c, y, w)
             if (device.type == "cuda") and (not verified_cuda_batch):
@@ -406,7 +417,7 @@ def train_with_epoch_plots(
                 if grad is None:
                     raise RuntimeError("Expected logits gradients for grad tracking.")
                 # Aggregate squared gradients and counts by condition/class for diagnostics.
-                grad_sq = grad.detach().view(-1).to(torch.float64)
+                grad_sq = grad.detach().view(-1).to(stats_dtype or torch.float64)
                 c_flat = c.view(-1).to(torch.long)
                 if grad_sq.numel() != c_flat.numel():
                     raise RuntimeError("Logits gradient size does not match conditions.")
@@ -421,7 +432,7 @@ def train_with_epoch_plots(
                 grad_sq_counts += torch.bincount(
                     c_flat,
                     minlength=grad_sq_counts.numel(),
-                ).to(torch.float64)
+                ).to(stats_dtype or torch.float64)
                 if grad_sq_class_sums is None or grad_sq_class_counts is None:
                     raise RuntimeError("Expected grad_sq_class stats when tracking gradients.")
                 y_flat = y.view(-1)
@@ -434,7 +445,7 @@ def train_with_epoch_plots(
                 grad_sq_class_counts += torch.bincount(
                     y_int,
                     minlength=2,
-                ).to(torch.float64)
+                ).to(stats_dtype or torch.float64)
             if debug_gradients:
                 print(f"[DEBUG] Gradients for epoch {epoch}, batch {batch_idx}")
                 for name, param in model.named_parameters():

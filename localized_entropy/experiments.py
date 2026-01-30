@@ -43,11 +43,12 @@ def build_loss_loaders(
     splits,
     device: torch.device,
     use_cuda: bool,
+    use_mps: bool = False,
 ) -> Tuple[object, dict]:
     """Build dataloaders using per-loss training overrides when configured."""
     train_cfg = resolve_training_cfg(cfg, loss_mode)
     batch_size = train_cfg.get("batch_size", cfg.get("training", {}).get("batch_size"))
-    loaders = build_dataloaders(splits, cfg, device, use_cuda, batch_size=batch_size)
+    loaders = build_dataloaders(splits, cfg, device, use_cuda, use_mps, batch_size=batch_size)
     return loaders, train_cfg
 
 
@@ -61,7 +62,12 @@ def select_eval_loader(eval_split: str, loaders: object) -> DataLoader:
     return loaders.eval_loader
 
 
-def build_model(cfg: dict, splits, device: torch.device) -> ConditionProbNet:
+def build_model(
+    cfg: dict,
+    splits,
+    device: torch.device,
+    dtype: Optional[torch.dtype] = None,
+) -> ConditionProbNet:
     """Construct a ConditionProbNet from config and data splits."""
     model_cfg = cfg["model"]
     hidden_sizes = model_cfg.get("hidden_sizes")
@@ -85,7 +91,9 @@ def build_model(cfg: dict, splits, device: torch.device) -> ConditionProbNet:
         activation=activation,
         norm=norm,
     )
-    return model.to(device)
+    if dtype is None:
+        return model.to(device)
+    return model.to(device=device, dtype=dtype)
 
 
 def resolve_eval_bundle(cfg, splits, loaders):
@@ -300,6 +308,8 @@ def run_repeated_loss_experiments(
     eval_name: str,
     device: torch.device,
     use_cuda: bool,
+    use_mps: bool = False,
+    model_dtype: Optional[torch.dtype] = None,
     seeds: Iterable[int],
     le_base_rates_train: Optional[np.ndarray] = None,
     le_base_rates_train_eval: Optional[np.ndarray] = None,
@@ -311,7 +321,7 @@ def run_repeated_loss_experiments(
     eval_has_labels = eval_labels is not None
     per_loss = {}
     for loss_mode in loss_modes:
-        loss_loaders, loss_train_cfg = build_loss_loaders(cfg, loss_mode, splits, device, use_cuda)
+        loss_loaders, loss_train_cfg = build_loss_loaders(cfg, loss_mode, splits, device, use_cuda, use_mps)
         focal_alpha = None
         focal_gamma = None
         focal_cfg = loss_train_cfg.get("focal") if isinstance(loss_train_cfg, dict) else None
@@ -340,7 +350,7 @@ def run_repeated_loss_experiments(
     for seed in seeds:
         for loss_mode in loss_modes:
             set_seed(int(seed), use_cuda)
-            model = build_model(cfg, splits, device)
+            model = build_model(cfg, splits, device, dtype=model_dtype)
             loss_bundle = per_loss[loss_mode]
             train_cfg = loss_bundle["train_cfg"]
             result = train_single_loss(

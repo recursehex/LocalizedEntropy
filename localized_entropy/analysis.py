@@ -631,13 +631,15 @@ def collect_logits(
 ):
     """Collect logits, targets, and conditions over a loader."""
     model.eval()
+    first_param = next(model.parameters(), None)
+    model_dtype = first_param.dtype if first_param is not None else torch.float32
     all_logits, all_targets, all_conditions = [], [], []
     for batch in loader:
         xb, x_cat, cb, yb, _ = batch
-        xb = xb.to(device, non_blocking=non_blocking)
+        xb = xb.to(device, non_blocking=non_blocking, dtype=model_dtype)
         x_cat = x_cat.to(device, non_blocking=non_blocking)
         cb = cb.to(device, non_blocking=non_blocking)
-        yb = yb.to(device, non_blocking=non_blocking)
+        yb = yb.to(device, non_blocking=non_blocking, dtype=model_dtype)
         zb = model(xb, x_cat, cb)
         all_logits.append(zb.detach().cpu())
         all_targets.append(yb.detach().cpu())
