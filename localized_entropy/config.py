@@ -60,7 +60,14 @@ def get_condition_label(cfg: Dict[str, Any]) -> str:
 
 def loss_label(loss_mode: str) -> str:
     """Map a loss mode string to a short label."""
-    return "LE" if loss_mode.lower().strip() == "localized_entropy" else "BCE"
+    text = loss_mode.lower().strip()
+    if text == "localized_entropy":
+        return "LE"
+    if text == "bce":
+        return "BCE"
+    if text == "focal":
+        return "Focal"
+    return text.upper()
 
 
 def _normalize_loss_mode(mode: Optional[str]) -> Optional[str]:
@@ -72,6 +79,8 @@ def _normalize_loss_mode(mode: Optional[str]) -> Optional[str]:
         return "localized_entropy"
     if text == "bce":
         return "bce"
+    if text in {"focal", "focal_loss", "focal-loss", "fl"}:
+        return "focal"
     return None
 
 
@@ -83,9 +92,20 @@ def resolve_loss_modes(loss_mode) -> list:
         text = str(mode).lower().strip()
         if text in {"both", "bce+le", "le+bce", "bce_le", "le_bce"}:
             return ["bce", "localized_entropy"]
-        if "," in text:
+        if text in {
+            "all",
+            "bce+le+focal",
+            "bce+focal+le",
+            "le+bce+focal",
+            "le+focal+bce",
+            "focal+bce+le",
+            "focal+le+bce",
+        }:
+            return ["bce", "localized_entropy", "focal"]
+        if "," in text or "+" in text:
+            clean = text.replace("+", ",")
             items = []
-            for part in text.split(","):
+            for part in clean.split(","):
                 norm = _normalize_loss_mode(part)
                 if norm is not None:
                     items.append(norm)
@@ -98,15 +118,11 @@ def resolve_loss_modes(loss_mode) -> list:
         for item in loss_mode:
             if item is None:
                 continue
-            if isinstance(item, str) and item.lower().strip() in {
-                "both",
-                "bce+le",
-                "le+bce",
-                "bce_le",
-                "le_bce",
-            }:
-                modes.extend(["bce", "localized_entropy"])
-                continue
+            if isinstance(item, str):
+                expanded = expand(item)
+                if expanded:
+                    modes.extend(expanded)
+                    continue
             norm = _normalize_loss_mode(item)
             if norm is not None:
                 modes.append(norm)

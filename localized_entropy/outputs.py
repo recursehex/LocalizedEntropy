@@ -27,7 +27,11 @@ def _normalize_filter_mode(mode: Optional[str]) -> str:
 def resolve_loss_dir(loss_mode: str) -> str:
     """Map a loss mode to its output directory name."""
     text = str(loss_mode).strip().lower()
-    return "le" if text in {"localized_entropy", "le"} else "bce"
+    if text in {"localized_entropy", "le"}:
+        return "le"
+    if text == "focal":
+        return "focal"
+    return "bce"
 
 
 def resolve_nn_type(cfg: Dict) -> str:

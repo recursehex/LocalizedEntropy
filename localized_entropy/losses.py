@@ -2,6 +2,7 @@ from typing import Optional
 
 import numpy as np
 import torch
+from torch.nn import functional as F
 
 
 def _summarize_tensor(name: str, tensor: torch.Tensor, max_items: int = 8) -> str:
@@ -65,6 +66,44 @@ def binary_cross_entropy(
     if reduction == "sum":
         return total
     return total
+
+
+def focal_loss_with_logits(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    *,
+    alpha: Optional[float] = 0.25,
+    gamma: Optional[float] = 2.0,
+    sample_weights: Optional[torch.Tensor] = None,
+    reduction: str = "mean",
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    """Compute binary focal loss from logits with optional sample weighting."""
+    z = logits.view(-1)
+    y = targets.view(-1).to(dtype=z.dtype)
+    bce = F.binary_cross_entropy_with_logits(z, y, reduction="none")
+    p = torch.sigmoid(z)
+    pt = (p * y) + ((1.0 - p) * (1.0 - y))
+    pt = pt.clamp(eps, 1.0 - eps)
+    gamma_value = 2.0 if gamma is None else float(gamma)
+    modulator = (1.0 - pt).pow(gamma_value)
+    loss = modulator * bce
+    if alpha is not None:
+        alpha_value = float(alpha)
+        alpha_t = (alpha_value * y) + ((1.0 - alpha_value) * (1.0 - y))
+        loss = loss * alpha_t
+    denom = None
+    if sample_weights is not None:
+        w = sample_weights.view(-1).to(dtype=z.dtype, device=z.device)
+        loss = loss * w
+        denom = w.sum().clamp_min(1.0)
+    if reduction == "sum":
+        return loss.sum()
+    if reduction == "mean":
+        if denom is None:
+            denom = torch.tensor(loss.numel(), dtype=z.dtype, device=z.device).clamp_min(1.0)
+        return loss.sum() / denom
+    return loss
 
 
 def localized_entropy(

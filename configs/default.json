@@ -9,12 +9,12 @@
       "baseline": {},
       "bce_baseline": {
         "training": {
-          "loss_mode": "both"
+          "loss_mode": "all"
         }
       },
       "default_net": {
         "training": {
-          "loss_mode": "both"
+          "loss_mode": "all"
         },
         "model": {
           "hidden_sizes": [
@@ -32,7 +32,7 @@
       },
       "small_net": {
         "training": {
-          "loss_mode": "both"
+          "loss_mode": "all"
         },
         "model": {
           "hidden_sizes": [
@@ -45,7 +45,7 @@
       },
       "wide_net": {
         "training": {
-          "loss_mode": "both"
+          "loss_mode": "all"
         },
         "model": {
           "hidden_sizes": [
@@ -62,7 +62,7 @@
       },
       "large_net": {
         "training": {
-          "loss_mode": "both"
+          "loss_mode": "all"
         },
         "model": {
           "hidden_sizes": [
@@ -92,6 +92,10 @@
     "lr": 0.001,
     "batch_size": 25000,
     "loss_mode": "both",
+    "focal": {
+      "alpha": 0.25,
+      "gamma": 2.0
+    },
     "eval_every_n_batches": 0,
     "debug_gradients": false,
     "print_embedding_table": true,
@@ -117,6 +121,22 @@
         }
       },
       "localized_entropy": {
+        "by_source": {
+          "ctr": {
+            "epochs": 3,
+            "lr": 0.001,
+            "batch_size": 25000,
+            "eval_every_n_batches": 0
+          },
+          "synthetic": {
+            "epochs": 3,
+            "lr": 0.001,
+            "batch_size": 25000,
+            "eval_every_n_batches": 0
+          }
+        }
+      },
+      "focal": {
         "by_source": {
           "ctr": {
             "epochs": 3,
@@ -215,7 +235,7 @@
     "balance_by_condition": true
   },
   "synthetic": {
-    "num_conditions": 6,
+    "num_conditions": 5,
     "min_samples_per_condition": 1000000,
     "max_samples_per_condition": 1000000,
     "numeric_features": [
@@ -229,8 +249,7 @@
       -2.0,
       -3.0,
       -4.0,
-      -5.0,
-      -6.0
+      -5.0
     ],
     "uniform_log10_std": 0.6,
     "uniform_mean_log10_range": [

@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from localized_entropy.losses import localized_entropy
+from localized_entropy.losses import focal_loss_with_logits, localized_entropy
 from localized_entropy.plotting import plot_eval_log10p_hist
 
 
@@ -112,6 +112,8 @@ def evaluate(
     condition_weights: Optional[np.ndarray] = None,
     loss_mode: str = "localized_entropy",
     base_rates: Optional[np.ndarray] = None,
+    focal_alpha: Optional[float] = 0.25,
+    focal_gamma: Optional[float] = 2.0,
     non_blocking: bool = False,
 ) -> Tuple[float, np.ndarray]:
     """Evaluate a model and return mean loss plus predictions."""
@@ -150,6 +152,13 @@ def evaluate(
             )
         elif loss_mode == "bce":
             loss = bce_loss(logits, y).mean()
+        elif loss_mode == "focal":
+            loss = focal_loss_with_logits(
+                logits=logits,
+                targets=y,
+                alpha=focal_alpha,
+                gamma=focal_gamma,
+            )
         else:
             raise ValueError(f"Unsupported loss_mode: {loss_mode}")
         total_loss += float(loss.item()) * x.size(0)
@@ -231,6 +240,8 @@ def train_with_epoch_plots(
     loss_mode: str = "localized_entropy",
     base_rates_train: Optional[np.ndarray] = None,
     base_rates_eval: Optional[np.ndarray] = None,
+    focal_alpha: Optional[float] = 0.25,
+    focal_gamma: Optional[float] = 2.0,
     non_blocking: bool = False,
     plot_eval_hist_epochs: bool = False,
     eval_callback: Optional[Callable[[np.ndarray, int], None]] = None,
@@ -248,7 +259,14 @@ def train_with_epoch_plots(
     val_losses: List[float] = []
     loss_mode = loss_mode.lower().strip()
     bce_loss = nn.BCEWithLogitsLoss()
-    loss_label = "LE" if loss_mode == "localized_entropy" else "BCE"
+    if loss_mode == "localized_entropy":
+        loss_label = "LE"
+    elif loss_mode == "bce":
+        loss_label = "BCE"
+    elif loss_mode == "focal":
+        loss_label = "Focal"
+    else:
+        raise ValueError(f"Unsupported loss_mode: {loss_mode}")
     use_le = loss_mode == "localized_entropy"
     base_rates_train_t = None
     base_rates_eval_t = None
@@ -298,6 +316,8 @@ def train_with_epoch_plots(
         condition_weights=condition_weights,
         loss_mode=loss_mode,
         base_rates=base_rates_train_t if use_le else None,
+        focal_alpha=focal_alpha,
+        focal_gamma=focal_gamma,
         non_blocking=non_blocking,
     )
     init_eval_loss, _ = evaluate(
@@ -307,6 +327,8 @@ def train_with_epoch_plots(
         condition_weights=condition_weights,
         loss_mode=loss_mode,
         base_rates=base_rates_eval_t if use_le else None,
+        focal_alpha=focal_alpha,
+        focal_gamma=focal_gamma,
         non_blocking=non_blocking,
     )
     train_losses.append(float(init_train_loss))
@@ -368,6 +390,14 @@ def train_with_epoch_plots(
                 bce_per = bce_loss(logits, y)
                 w_flat = w.view(-1).to(logits.dtype)
                 loss = (bce_per.view(-1) * w_flat).sum() / w_flat.sum().clamp_min(1.0)
+            elif loss_mode == "focal":
+                loss = focal_loss_with_logits(
+                    logits=logits,
+                    targets=y,
+                    alpha=focal_alpha,
+                    gamma=focal_gamma,
+                    sample_weights=w,
+                )
             else:
                 raise ValueError(f"Unsupported loss_mode: {loss_mode}")
             loss.backward()
@@ -428,6 +458,8 @@ def train_with_epoch_plots(
                     condition_weights=condition_weights,
                     loss_mode=loss_mode,
                     base_rates=base_rates_eval_t if use_le else None,
+                    focal_alpha=focal_alpha,
+                    focal_gamma=focal_gamma,
                     non_blocking=non_blocking,
                 )
                 if eval_batch_callback is not None:
@@ -461,6 +493,8 @@ def train_with_epoch_plots(
             condition_weights=condition_weights,
             loss_mode=loss_mode,
             base_rates=base_rates_eval_t if use_le else None,
+            focal_alpha=focal_alpha,
+            focal_gamma=focal_gamma,
             non_blocking=non_blocking,
         )
         if plot_eval_hist_epochs and preds is not None:

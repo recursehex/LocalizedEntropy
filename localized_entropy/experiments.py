@@ -153,6 +153,8 @@ def evaluate_or_predict(
     loss_mode: str,
     eval_has_labels: bool,
     base_rates: Optional[np.ndarray] = None,
+    focal_alpha: Optional[float] = None,
+    focal_gamma: Optional[float] = None,
     non_blocking: bool = False,
 ) -> Tuple[float, np.ndarray]:
     """Run eval loss if labels exist, otherwise return predictions only."""
@@ -163,6 +165,8 @@ def evaluate_or_predict(
             device,
             loss_mode=loss_mode,
             base_rates=base_rates,
+            focal_alpha=focal_alpha,
+            focal_gamma=focal_gamma,
             non_blocking=non_blocking,
         )
     preds = predict_probs(
@@ -188,6 +192,8 @@ def train_single_loss(
     le_base_rates_train: Optional[np.ndarray] = None,
     le_base_rates_train_eval: Optional[np.ndarray] = None,
     le_base_rates_eval: Optional[np.ndarray] = None,
+    focal_alpha: Optional[float] = None,
+    focal_gamma: Optional[float] = None,
     non_blocking: bool = False,
     plot_eval_hist_epochs: bool = False,
     eval_callback: Optional[Callable[[np.ndarray, int], None]] = None,
@@ -230,6 +236,8 @@ def train_single_loss(
         loss_mode=loss_mode,
         base_rates_train=base_rates_train,
         base_rates_eval=base_rates_train_eval,
+        focal_alpha=focal_alpha,
+        focal_gamma=focal_gamma,
         non_blocking=non_blocking,
         plot_eval_hist_epochs=plot_eval_hist_epochs,
         eval_callback=eval_callback,
@@ -248,6 +256,8 @@ def train_single_loss(
         loss_mode=loss_mode,
         eval_has_labels=eval_has_labels,
         base_rates=base_rates_eval,
+        focal_alpha=focal_alpha,
+        focal_gamma=focal_gamma,
         non_blocking=non_blocking,
     )
     eval_logits = eval_targets = eval_conds = None
@@ -302,6 +312,12 @@ def run_repeated_loss_experiments(
     per_loss = {}
     for loss_mode in loss_modes:
         loss_loaders, loss_train_cfg = build_loss_loaders(cfg, loss_mode, splits, device, use_cuda)
+        focal_alpha = None
+        focal_gamma = None
+        focal_cfg = loss_train_cfg.get("focal") if isinstance(loss_train_cfg, dict) else None
+        if isinstance(focal_cfg, dict):
+            focal_alpha = focal_cfg.get("alpha")
+            focal_gamma = focal_cfg.get("gamma")
         loss_eval_loader = select_eval_loader(eval_split, loss_loaders)
         loss_train_eval_loader, _, _ = resolve_train_eval_bundle(
             eval_split,
@@ -317,6 +333,8 @@ def run_repeated_loss_experiments(
             "loaders": loss_loaders,
             "eval_loader": loss_eval_loader,
             "train_eval_loader": loss_train_eval_loader,
+            "focal_alpha": focal_alpha,
+            "focal_gamma": focal_gamma,
         }
     results: Dict[str, List[TrainRunResult]] = {loss_mode: [] for loss_mode in loss_modes}
     for seed in seeds:
@@ -338,6 +356,8 @@ def run_repeated_loss_experiments(
                 le_base_rates_train=le_base_rates_train,
                 le_base_rates_train_eval=le_base_rates_train_eval,
                 le_base_rates_eval=le_base_rates_eval,
+                focal_alpha=loss_bundle.get("focal_alpha"),
+                focal_gamma=loss_bundle.get("focal_gamma"),
                 non_blocking=non_blocking,
                 plot_eval_hist_epochs=False,
                 eval_callback=None,

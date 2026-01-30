@@ -56,19 +56,25 @@ Template model definitions included in `configs/default.json`:
 - `training.epochs`: Number of training epochs.
 - `training.lr`: Adam learning rate.
 - `training.batch_size`: Train/eval batch size.
-- `training.loss_mode`: `localized_entropy`, `bce`, or `both` (train BCE
-  and LE sequentially).
+- `training.loss_mode`: `localized_entropy`, `bce`, `focal`, `both` (train
+  BCE + LE sequentially), `all` (train BCE + LE + focal sequentially), or
+  a comma/plus-delimited list (for example `bce,localized_entropy,focal`).
 - `training.eval_every_n_batches`: If > 0, run mid-epoch eval callbacks
   at that interval and record train/eval loss by batch in the loss curve.
 - `training.eval_compare_losses`: List of loss modes to evaluate after
-  training for comparison (ignored when `loss_mode` is `both`).
+  training for comparison (ignored when training multiple losses).
+- `training.focal`: Focal loss configuration for `loss_mode=focal`.
+  - `training.focal.alpha`: Positive-class weight (set `null` to disable
+    alpha reweighting).
+  - `training.focal.gamma`: Focusing parameter (higher = more focus on hard
+    examples).
 - `training.debug_gradients`: If true, print raw per-parameter gradient
   tensors every batch. Recommended batch size of 3. WARNING: this is extremely performance intensive and will generate massive output!
 - `training.print_embedding_table`: If true, print the full condition
   embedding table after each epoch.
-- `training.by_loss`: Optional per-loss overrides keyed by `bce` or
-  `localized_entropy` (`le` is accepted). Values in this block override
-  the top-level training fields and apply independently per loss mode.
+- `training.by_loss`: Optional per-loss overrides keyed by `bce`,
+  `localized_entropy` (`le` is accepted), or `focal`. Values in this block
+  override the top-level training fields and apply independently per loss mode.
 - `training.by_loss.<loss>.by_source`: Optional per-dataset overrides
   keyed by `data.source` (`ctr` or `synthetic`). These apply after the
   per-loss overrides to select hyperparameters for a specific loss +
@@ -78,11 +84,24 @@ Example:
 
 ```json
 "training": {
-  "loss_mode": "both",
-  "eval_compare_losses": ["localized_entropy", "bce"],
+  "loss_mode": "all",
+  "focal": {"alpha": 0.25, "gamma": 2.0},
+  "eval_compare_losses": ["localized_entropy", "bce", "focal"],
   "eval_every_n_batches": 200,
   "by_loss": {
     "bce": {
+      "by_source": {
+        "ctr": {
+          "epochs": 2,
+          "batch_size": 10000
+        },
+        "synthetic": {
+          "epochs": 5,
+          "batch_size": 50000
+        }
+      }
+    },
+    "focal": {
       "by_source": {
         "ctr": {
           "epochs": 2,
@@ -344,7 +363,7 @@ Example: evaluate on test labels when available:
 ```
 
 ### repeats
-Optional repeated-run significance testing when training both losses.
+Optional repeated-run significance testing when training BCE + LE.
 
 - `repeats.enabled`: If true, run repeated BCE vs LE training runs.
 - `repeats.num_runs`: Number of paired runs per loss.
@@ -374,7 +393,7 @@ Example: run 10 paired repeats and report Wilcoxon p-values:
 ```
 
 ### comparison
-Used when `training.loss_mode` is `both` to compare BCE vs LE per-condition
+Used when BCE + LE are both trained to compare per-condition performance
 calibration and LE ratio terms.
 
 - `comparison.enabled`: If true, run the per-condition comparison.

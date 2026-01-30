@@ -82,9 +82,11 @@ Step-by-step pipeline:
 
 8) Training loop
 - `localized_entropy/training.py` implements training and eval.
-- Supports two loss modes:
+- Supports three loss modes:
   - Localized Entropy (`localized_entropy/losses.py`).
   - BCE (`torch.nn.BCEWithLogitsLoss`).
+  - Focal loss (`localized_entropy/losses.py`), configured by
+    `training.focal.alpha` and `training.focal.gamma`.
 - When per-sample weights are provided (synthetic reweighting), BCE and
   LE scale each sample by its weight and normalize by total weight.
 - When configured, BCE/LE use per-loss training overrides for
@@ -111,7 +113,9 @@ Step-by-step pipeline:
 - If `training.print_embedding_table=true`, the loop prints the full
   condition embedding table (`model.embedding.weight`) after each epoch.
 - If `training.loss_mode` is set to `both`, the notebook trains BCE and
-  LE sequentially and stores results for comparison.
+  LE sequentially and stores results for comparison. Use `all` (or a
+  list like `bce,localized_entropy,focal`) to train all three losses
+  sequentially.
 
 9) Post-training evaluation
 - Evaluates on the configured split (`evaluation.split`).
@@ -123,7 +127,7 @@ Step-by-step pipeline:
   - Per-condition ECE and base rates.
 - Optionally compares loss values under alternate loss modes
   (`training.eval_compare_losses`).
-- If both losses are trained, the notebook builds a per-condition
+- If BCE + LE are trained, the notebook builds a per-condition
   comparison table (calibration ratios, per-condition BCE logloss for
   each run, plus LE ratio deltas) using `localized_entropy/compare.py`,
   printing an aligned text table plus a BCE-vs-LE summary (accuracy,
