@@ -19,57 +19,6 @@ def _interest_prob(ages: np.ndarray, mu_age: float, sigma_age: float, interest_s
     return interest_prob / interest_scale
 
 
-def _rescale_probs_to_mean_with_bounds(
-    probs: np.ndarray,
-    target_mean: float,
-    prob_min: float,
-    prob_max: float,
-    tol: float = 1e-8,
-    max_iter: int = 60,
-) -> Tuple[np.ndarray, float, bool]:
-    """Scale probabilities to hit a target mean while staying within bounds."""
-    if not (0.0 < target_mean <= 1.0):
-        raise ValueError("target_mean must be in (0, 1].")
-    if not (0.0 <= prob_min < prob_max <= 1.0):
-        raise ValueError("prob_min/prob_max must satisfy 0 <= min < max <= 1.")
-    current_mean = float(np.mean(probs))
-    if current_mean <= 0:
-        clipped = prob_min > 0
-        return np.full_like(probs, prob_min, dtype=np.float32), 0.0, clipped
-
-    target = float(np.clip(target_mean, prob_min, prob_max))
-
-    def mean_for(scale: float) -> float:
-        return float(np.mean(np.clip(probs * scale, prob_min, prob_max)))
-
-    scale_low = 0.0
-    scale_high = 1.0
-    mean_high = mean_for(scale_high)
-    while mean_high < target and scale_high < 1e12:
-        scale_high *= 2.0
-        mean_high = mean_for(scale_high)
-
-    if mean_high < target:
-        scaled = np.clip(probs * scale_high, prob_min, prob_max)
-        return scaled.astype(np.float32, copy=False), scale_high, True
-
-    scale = scale_high
-    for _ in range(max_iter):
-        scale_mid = 0.5 * (scale_low + scale_high)
-        mean_mid = mean_for(scale_mid)
-        scale = scale_mid
-        if abs(mean_mid - target) <= tol:
-            break
-        if mean_mid < target:
-            scale_low = scale_mid
-        else:
-            scale_high = scale_mid
-
-    scaled = np.clip(probs * scale, prob_min, prob_max)
-    clipped = bool(np.any((probs * scale) < prob_min) or np.any((probs * scale) > prob_max))
-    return scaled.astype(np.float32, copy=False), scale, clipped
-
-
 def _ranked_normal_probs(
     base_probs: np.ndarray,
     target_mean: float,
@@ -309,54 +258,24 @@ def make_dataset(
 
     uniform_log10_means = None
     uniform_sigma_log10 = None
-    uniform_shape_mode = None
-    uniform_band_width = None
-    uniform_log10_min = None
     uniform_log10_max = 0.0
     if mode in {"uniform_mean", "uniform_log10", "uniform"}:
         log10_means_cfg = cfg.get("uniform_log10_means")
-        if log10_means_cfg is not None:
-            if not isinstance(log10_means_cfg, (list, tuple)):
-                raise ValueError("uniform_log10_means must be a list of log10 values.")
-            if len(log10_means_cfg) != num_conditions:
-                raise ValueError(
-                    "uniform_log10_means length must match num_conditions "
-                    f"({len(log10_means_cfg)} != {num_conditions})."
-                )
-            uniform_log10_means = np.array([float(v) for v in log10_means_cfg], dtype=np.float64)
-        else:
-            mean_range = cfg.get("uniform_mean_log10_range", [-1.0, -10.0])
-            if not isinstance(mean_range, (list, tuple)) or len(mean_range) != 2:
-                raise ValueError("uniform_mean_log10_range must be a 2-item list.")
-            start, end = float(mean_range[0]), float(mean_range[1])
-            uniform_log10_means = np.linspace(start, end, num_conditions)
+        if log10_means_cfg is None:
+            raise ValueError("uniform_log10_means must be set when condition_mode is uniform.")
+        if not isinstance(log10_means_cfg, (list, tuple)):
+            raise ValueError("uniform_log10_means must be a list of log10 values.")
+        if len(log10_means_cfg) != num_conditions:
+            raise ValueError(
+                "uniform_log10_means length must match num_conditions "
+                f"({len(log10_means_cfg)} != {num_conditions})."
+            )
+        uniform_log10_means = np.array([float(v) for v in log10_means_cfg], dtype=np.float64)
 
         uniform_sigma_log10 = cfg.get("uniform_log10_std")
         if uniform_sigma_log10 is None:
-            if log10_means_cfg is not None:
-                raise ValueError("uniform_log10_std must be set when using uniform_log10_means.")
-            sigma_fraction = float(cfg.get("uniform_log10_sigma_fraction", 0.3))
-            if num_conditions > 1:
-                span = float(np.max(uniform_log10_means) - np.min(uniform_log10_means))
-                spacing = span / (num_conditions - 1)
-            else:
-                spacing = 1.0
-            uniform_sigma_log10 = spacing * max(sigma_fraction, 0.0)
-        else:
-            uniform_sigma_log10 = float(uniform_sigma_log10)
-
-        uniform_shape_mode = str(cfg.get("uniform_log10_shape", "rank_normal")).lower().strip()
-        band_fraction = cfg.get("uniform_log10_band_fraction", 0.0)
-        band_fraction = float(band_fraction) if band_fraction is not None else 0.0
-        if num_conditions > 1:
-            span = float(np.max(uniform_log10_means) - np.min(uniform_log10_means))
-            spacing = span / (num_conditions - 1)
-        else:
-            spacing = 1.0
-        if band_fraction >= 1.0:
-            print("[WARN] uniform_log10_band_fraction >= 1; bands will overlap.")
-        band_fraction = max(band_fraction, 0.0)
-        uniform_band_width = spacing * band_fraction if band_fraction > 0 else None
+            raise ValueError("uniform_log10_std must be set when condition_mode is uniform.")
+        uniform_sigma_log10 = float(uniform_sigma_log10)
 
     ages_all, nw_all, conds_all, labels_all, probs_all = [], [], [], [], []
     clip_conditions = 0
@@ -378,31 +297,13 @@ def make_dataset(
                 rng=rng,
             )
             mu_log10 = float(uniform_log10_means[cond])
-            if uniform_shape_mode in {"rank_normal", "rank_log10", "bell", "gaussian", "normal"}:
-                probs, clipped = _ranked_log10_normal_probs(
-                    base_probs,
-                    mu_log10=mu_log10,
-                    sigma_log10=uniform_sigma_log10,
-                    log10_min=uniform_log10_min,
-                    log10_max=uniform_log10_max,
-                )
-            else:
-                # Legacy fallback: rescale base probs to a target mean in probability space.
-                target_mean = float(10.0 ** mu_log10)
-                if uniform_band_width is not None:
-                    band_lo_log = mu_log10 - 0.5 * uniform_band_width
-                    band_hi_log = mu_log10 + 0.5 * uniform_band_width
-                    prob_min = float(10.0 ** band_lo_log)
-                    prob_max = float(10.0 ** band_hi_log)
-                else:
-                    prob_min = 0.0
-                    prob_max = 1.0
-                probs, _, clipped = _rescale_probs_to_mean_with_bounds(
-                    base_probs,
-                    target_mean,
-                    prob_min,
-                    prob_max,
-                )
+            probs, clipped = _ranked_log10_normal_probs(
+                base_probs,
+                mu_log10=mu_log10,
+                sigma_log10=uniform_sigma_log10,
+                log10_min=None,
+                log10_max=uniform_log10_max,
+            )
             if clipped:
                 clip_conditions += 1
         else:
@@ -427,11 +328,11 @@ def make_dataset(
     labels = np.concatenate(labels_all, axis=0)
     probs = np.concatenate(probs_all, axis=0)
 
-    if mode == "uniform_mean" and clip_conditions > 0:
+    if mode in {"uniform_mean", "uniform_log10", "uniform"} and clip_conditions > 0:
         print(
-            "[WARN] uniform_mean scaling clipped probabilities for "
+            "[WARN] Uniform log10 sampling clipped probabilities for "
             f"{clip_conditions}/{num_conditions} conditions. "
-            "Consider lowering uniform_mean_log10_range or adjusting base shape parameters."
+            "Consider adjusting uniform_log10_means or uniform_log10_std."
         )
 
     return {

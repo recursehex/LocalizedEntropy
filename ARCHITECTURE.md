@@ -190,7 +190,7 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
 - Builds numeric features based on `synthetic.numeric_features`
   (supported values: `age`, `net_worth`, `log10_net_worth`, and
   `noise*`).
-- Supports `synthetic.condition_mode=uniform_mean`/`uniform_log10` to map
+- Supports `synthetic.condition_mode=uniform`/`uniform_log10` to map
   feature-driven base probabilities into a per-condition log10-normal
   bell curve with explicit centers (`synthetic.uniform_log10_means`) and
   standard deviation (`synthetic.uniform_log10_std`). The mapping keeps

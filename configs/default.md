@@ -255,25 +255,16 @@ These settings are used when `data.source` is `synthetic`.
   Supported values: `age`, `net_worth`, `log10_net_worth`, and `noise`
   (or `noise_1`, `noise_2`, ...). Any `noise*` entries draw from
   `synthetic.extra_feature_dist`.
-- `synthetic.condition_mode`: `random` (default) or `uniform_mean`.
+- `synthetic.condition_mode`: `random` (default) or `uniform`/`uniform_log10`.
   - `random`: each condition samples its own shape parameters.
-  - `uniform_mean`/`uniform_log10`: generate per-condition probabilities
-    from log10-normal bell curves while preserving feature ranks.
+  - `uniform`/`uniform_log10`: generate per-condition probabilities from
+    log10-normal bell curves while preserving feature ranks.
 - `synthetic.uniform_log10_means`: List of log10 probability means (one
   per condition) used in uniform mode.
 - `synthetic.uniform_log10_std`: Standard deviation in log10 space for
   the bell curve used in uniform mode.
-- `synthetic.uniform_log10_shape`: Shape mode for uniform distributions.
-  `rank_normal` (default) maps ranked base probabilities into a
-  log10-normal bell curve; other values fall back to legacy rescaling.
-- `synthetic.uniform_mean_log10_range`: Legacy log10 range for mean
-  probabilities when `uniform_log10_means` is not provided.
-- `synthetic.uniform_log10_band_fraction`: Optional width of the
-  per-condition log10 band as a fraction of the spacing between means
-  (legacy rescaling mode only).
-- `synthetic.uniform_log10_sigma_fraction`: Legacy fallback for log10
-  std (spacing * fraction) when `uniform_log10_std` is not set and
-  `uniform_log10_means` is absent.
+  Both `uniform_log10_means` and `uniform_log10_std` are required when
+  using uniform modes.
 - `synthetic.use_true_base_rates_for_le`: If true, LE denominators use
   per-condition mean probabilities (from synthetic `probs`) instead of
   label-derived rates to avoid zero-positive collapse at very low means.

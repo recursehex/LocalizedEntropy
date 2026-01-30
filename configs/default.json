@@ -252,13 +252,6 @@
       -5.0
     ],
     "uniform_log10_std": 0.6,
-    "uniform_mean_log10_range": [
-      -1.0,
-      -6.0
-    ],
-    "uniform_log10_band_fraction": 0.0,
-    "uniform_log10_shape": "rank_normal",
-    "uniform_log10_sigma_fraction": 0.5,
     "use_true_base_rates_for_le": true,
     "base_mu_ln": 10.0,
     "base_sigma_ln": 1.5,
