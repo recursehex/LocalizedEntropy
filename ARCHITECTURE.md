@@ -94,6 +94,10 @@ Step-by-step pipeline:
 - When configured, BCE/LE use per-loss training overrides for
   `epochs`, `lr`, and `batch_size`, rebuilding dataloaders per loss to
   honor different batch sizes.
+- When configured, the optimizer can use a separate learning rate
+  for the condition embedding table (`training.lr_category`, alias
+  `LRCategory`) and optionally zero out the base learning rate after
+  `training.lr_zero_after_epochs`.
 - For LE, per-condition base rates are computed once from the training data
   and reused as fixed normalization factors during training (streaming
   base rates are only used as a fallback when precomputed rates are absent).

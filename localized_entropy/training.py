@@ -244,6 +244,8 @@ def train_with_epoch_plots(
     device: torch.device,
     epochs: int,
     lr: float,
+    category_lr: Optional[float] = None,
+    lr_zero_after_epochs: Optional[int] = None,
     condition_weights: Optional[np.ndarray] = None,
     loss_mode: str = "localized_entropy",
     base_rates_train: Optional[np.ndarray] = None,
@@ -262,12 +264,34 @@ def train_with_epoch_plots(
     print_embedding_table: bool = False,
 ) -> Tuple[List[float], List[float], Optional[GradSqStats], List[dict]]:
     """Train a model while optionally collecting plots and diagnostics."""
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    base_lr_group_indices = [0]
+    if category_lr is not None:
+        emb_layer = getattr(model, "embedding", None)
+        category_params = list(emb_layer.parameters()) if emb_layer is not None else []
+        if category_params:
+            category_param_ids = {id(p) for p in category_params}
+            base_params = [p for p in model.parameters() if id(p) not in category_param_ids]
+            param_groups = []
+            base_lr_group_indices = []
+            if base_params:
+                param_groups.append({"params": base_params, "lr": lr})
+                base_lr_group_indices.append(0)
+            param_groups.append({"params": category_params, "lr": float(category_lr)})
+            opt = torch.optim.Adam(param_groups)
+        else:
+            opt = torch.optim.Adam(model.parameters(), lr=lr)
+    else:
+        opt = torch.optim.Adam(model.parameters(), lr=lr)
     train_losses: List[float] = []
     val_losses: List[float] = []
     model_dtype = _resolve_model_dtype(model)
     loss_mode = loss_mode.lower().strip()
     bce_loss = nn.BCEWithLogitsLoss()
+    base_lr_zero_after = None
+    if lr_zero_after_epochs is not None:
+        base_lr_zero_after = int(lr_zero_after_epochs)
+        if base_lr_zero_after < 0:
+            raise ValueError("lr_zero_after_epochs must be >= 0.")
     if loss_mode == "localized_entropy":
         loss_label = "LE"
     elif loss_mode == "bce":
@@ -353,6 +377,10 @@ def train_with_epoch_plots(
     eval_step = 0
     for epoch in range(1, epochs + 1):
         model.train()
+        if base_lr_zero_after is not None and epoch > base_lr_zero_after:
+            for group_idx in base_lr_group_indices:
+                if opt.param_groups[group_idx]["lr"] != 0.0:
+                    opt.param_groups[group_idx]["lr"] = 0.0
         br_tracker = None
         if use_le and base_rates_train_t is None:
             # Fallback to streaming base rates if precomputed rates are unavailable.

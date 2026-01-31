@@ -57,6 +57,11 @@ Template model definitions included in `configs/default.json`:
 ### training
 - `training.epochs`: Number of training epochs.
 - `training.lr`: Adam learning rate.
+- `training.lr_category`: Optional learning rate applied only to the
+  condition embedding table. Accepts `LRCategory` as an alias
+  in JSON configs.
+- `training.lr_zero_after_epochs`: Optional epoch count after which the
+  base learning rate is set to 0.
 - `training.batch_size`: Train/eval batch size.
 - `training.loss_mode`: `localized_entropy`, `bce`, `focal`, `both` (train
   BCE + LE sequentially), `all` (train BCE + LE + focal sequentially), or
@@ -125,7 +130,9 @@ Example:
         "synthetic": {
           "epochs": 8,
           "batch_size": 10000,
-          "lr": 0.0005
+          "lr": 0.0005,
+          "lr_category": 0.00025,
+          "lr_zero_after_epochs": 2
         }
       }
     }

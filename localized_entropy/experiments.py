@@ -196,6 +196,8 @@ def train_single_loss(
     device: torch.device,
     epochs: int,
     lr: float,
+    lr_category: Optional[float] = None,
+    lr_zero_after_epochs: Optional[int] = None,
     eval_has_labels: bool,
     le_base_rates_train: Optional[np.ndarray] = None,
     le_base_rates_train_eval: Optional[np.ndarray] = None,
@@ -241,6 +243,8 @@ def train_single_loss(
         device=device,
         epochs=int(epochs),
         lr=float(lr),
+        category_lr=None if lr_category is None else float(lr_category),
+        lr_zero_after_epochs=lr_zero_after_epochs,
         loss_mode=loss_mode,
         base_rates_train=base_rates_train,
         base_rates_eval=base_rates_train_eval,
@@ -318,7 +322,15 @@ def run_repeated_loss_experiments(
     collect_eval_logits: bool = False,
 ) -> Dict[str, List[TrainRunResult]]:
     """Run repeated training for each loss mode and seed."""
+    def _resolve_lr_category(train_cfg: dict) -> Optional[float]:
+        if not isinstance(train_cfg, dict):
+            return None
+        if "lr_category" in train_cfg:
+            return train_cfg.get("lr_category")
+        return train_cfg.get("LRCategory")
+
     eval_has_labels = eval_labels is not None
+    data_source = get_data_source(cfg)
     per_loss = {}
     for loss_mode in loss_modes:
         loss_loaders, loss_train_cfg = build_loss_loaders(cfg, loss_mode, splits, device, use_cuda, use_mps)
@@ -353,6 +365,11 @@ def run_repeated_loss_experiments(
             model = build_model(cfg, splits, device, dtype=model_dtype)
             loss_bundle = per_loss[loss_mode]
             train_cfg = loss_bundle["train_cfg"]
+            lr_category = None
+            lr_zero_after_epochs = None
+            if data_source == "synthetic" and loss_mode == "localized_entropy":
+                lr_category = _resolve_lr_category(train_cfg)
+                lr_zero_after_epochs = train_cfg.get("lr_zero_after_epochs")
             result = train_single_loss(
                 model=model,
                 loss_mode=loss_mode,
@@ -362,6 +379,8 @@ def run_repeated_loss_experiments(
                 device=device,
                 epochs=train_cfg.get("epochs", cfg["training"]["epochs"]),
                 lr=train_cfg.get("lr", cfg["training"]["lr"]),
+                lr_category=lr_category,
+                lr_zero_after_epochs=lr_zero_after_epochs,
                 eval_has_labels=eval_has_labels,
                 le_base_rates_train=le_base_rates_train,
                 le_base_rates_train_eval=le_base_rates_train_eval,
