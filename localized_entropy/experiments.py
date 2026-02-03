@@ -214,6 +214,7 @@ def train_single_loss(
     collect_eval_batch_losses: bool = False,
     debug_gradients: bool = False,
     debug_le_inputs: bool = True,
+    le_cross_batch_cfg: Optional[dict] = None,
     print_embedding_table: bool = False,
 ) -> TrainRunResult:
     """Train one model/loss mode and collect evaluation outputs."""
@@ -259,6 +260,7 @@ def train_single_loss(
         track_grad_sq_sums=collect_grad_sq_sums,
         debug_gradients=debug_gradients,
         debug_le_inputs=debug_le_inputs,
+        le_cross_batch_cfg=le_cross_batch_cfg,
         print_embedding_table=print_embedding_table,
     )
     eval_loss, eval_preds = evaluate_or_predict(
@@ -370,6 +372,11 @@ def run_repeated_loss_experiments(
             if data_source == "synthetic" and loss_mode == "localized_entropy":
                 lr_category = _resolve_lr_category(train_cfg)
                 lr_zero_after_epochs = train_cfg.get("lr_zero_after_epochs")
+            le_cross_batch_cfg = None
+            if loss_mode == "localized_entropy" and isinstance(train_cfg, dict):
+                le_cfg = train_cfg.get("localized_entropy")
+                if isinstance(le_cfg, dict):
+                    le_cross_batch_cfg = le_cfg.get("cross_batch")
             result = train_single_loss(
                 model=model,
                 loss_mode=loss_mode,
@@ -394,6 +401,7 @@ def run_repeated_loss_experiments(
                 eval_batch_callback=None,
                 print_embedding_table=train_cfg.get("print_embedding_table", False),
                 collect_eval_logits=collect_eval_logits,
+                le_cross_batch_cfg=le_cross_batch_cfg,
             )
             results[loss_mode].append(result)
     return results

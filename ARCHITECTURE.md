@@ -101,6 +101,10 @@ Step-by-step pipeline:
 - For LE, per-condition base rates are computed once from the training data
   and reused as fixed normalization factors during training (streaming
   base rates are only used as a fallback when precomputed rates are absent).
+- When `training.localized_entropy.cross_batch.enabled=true`, LE uses a
+  moving-window label history per condition/label (window size computed
+  from `training.localized_entropy.cross_batch.amplification_factor`) to
+  stabilize denominator statistics across batches.
 - Optional mid-epoch eval callbacks can plot prediction histograms.
 - When `training.eval_every_n_batches > 0`, train/eval loss is tracked by
   batch for additional diagnostics in the loss curve plot.
@@ -214,6 +218,8 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
 
 - `localized_entropy/losses.py`:
   - `localized_entropy`: novel per-condition normalized BCE.
+  - `CrossBatchHistory`: optional moving-window label tracker used to
+    stabilize LE denominators across batches when configured.
   - `binary_cross_entropy`: custom loop-based BCE (currently not used in
     the notebook training loop).
 - `localized_entropy/analysis.py`:

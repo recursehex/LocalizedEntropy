@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from localized_entropy.losses import focal_loss_with_logits, localized_entropy
+from localized_entropy.losses import CrossBatchHistory, focal_loss_with_logits, localized_entropy
 from localized_entropy.plotting import plot_eval_log10p_hist
 
 
@@ -261,6 +261,7 @@ def train_with_epoch_plots(
     track_grad_sq_sums: bool = False,
     debug_gradients: bool = False,
     debug_le_inputs: bool = True,
+    le_cross_batch_cfg: Optional[dict] = None,
     print_embedding_table: bool = False,
 ) -> Tuple[List[float], List[float], Optional[GradSqStats], List[dict]]:
     """Train a model while optionally collecting plots and diagnostics."""
@@ -301,6 +302,14 @@ def train_with_epoch_plots(
     else:
         raise ValueError(f"Unsupported loss_mode: {loss_mode}")
     use_le = loss_mode == "localized_entropy"
+    cross_batch_history = None
+    if use_le and isinstance(le_cross_batch_cfg, dict):
+        enabled = bool(le_cross_batch_cfg.get("enabled", False))
+        amp_factor = le_cross_batch_cfg.get("amplification_factor")
+        if enabled and amp_factor is not None:
+            amp_value = float(amp_factor)
+            if amp_value > 0:
+                cross_batch_history = CrossBatchHistory(amp_value)
     base_rates_train_t = None
     base_rates_eval_t = None
     if use_le:
@@ -424,6 +433,7 @@ def train_with_epoch_plots(
                         if condition_weights is not None else None),
                     sample_weights=w,
                     debug=debug_le_inputs,
+                    cross_batch_history=cross_batch_history,
                 )
             elif loss_mode == "bce":
                 bce_per = bce_loss(logits, y)

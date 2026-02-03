@@ -1,4 +1,6 @@
-from typing import Optional
+import math
+from collections import deque
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -106,6 +108,120 @@ def focal_loss_with_logits(
     return loss
 
 
+class CrossBatchHistory:
+    """Track recent examples per condition/label with a moving window."""
+
+    def __init__(self, amplification_factor: float, eps: float = 1e-12):
+        if amplification_factor <= 0:
+            raise ValueError("amplification_factor must be > 0 for cross-batch history.")
+        self.amplification_factor = float(amplification_factor)
+        self.eps = float(eps)
+        self._buffers: Dict[int, Dict[int, deque]] = {}
+        self._weight_sums: Dict[int, Dict[int, float]] = {}
+        self._capacities: Dict[int, Dict[int, int]] = {}
+
+    def _capacity_for_label(self, base_rate: float, label: int) -> int:
+        if label not in (0, 1):
+            raise ValueError("label must be 0 or 1.")
+        rate = base_rate if label == 1 else (1.0 - base_rate)
+        if not math.isfinite(rate) or rate <= 0:
+            rate = self.eps
+        capacity = int(math.ceil(self.amplification_factor / max(rate, self.eps)))
+        return max(1, capacity)
+
+    def _ensure_condition(self, condition_id: int) -> None:
+        if condition_id not in self._buffers:
+            self._buffers[condition_id] = {0: deque(), 1: deque()}
+            self._weight_sums[condition_id] = {0: 0.0, 1: 0.0}
+            self._capacities[condition_id] = {0: 1, 1: 1}
+
+    def _set_capacity(self, condition_id: int, label: int, capacity: int) -> None:
+        self._ensure_condition(condition_id)
+        capacity = max(1, int(capacity))
+        self._capacities[condition_id][label] = capacity
+        buf = self._buffers[condition_id][label]
+        while len(buf) > capacity:
+            removed = buf.popleft()
+            self._weight_sums[condition_id][label] -= float(removed)
+
+    def _append(self, condition_id: int, label: int, weight: float) -> None:
+        self._ensure_condition(condition_id)
+        capacity = self._capacities[condition_id][label]
+        buf = self._buffers[condition_id][label]
+        while len(buf) >= capacity:
+            removed = buf.popleft()
+            self._weight_sums[condition_id][label] -= float(removed)
+        buf.append(float(weight))
+        self._weight_sums[condition_id][label] += float(weight)
+
+    def update(
+        self,
+        conditions: torch.Tensor,
+        targets: torch.Tensor,
+        sample_weights: Optional[torch.Tensor] = None,
+        base_rates: Optional[torch.Tensor] = None,
+    ) -> None:
+        """Update history buffers using a batch of conditions/labels."""
+        c = conditions.view(-1).detach().cpu().numpy()
+        y = targets.view(-1).detach().cpu().numpy()
+        w = None
+        if sample_weights is not None:
+            w = sample_weights.view(-1).detach().cpu().numpy()
+
+        base_rates_np = None
+        if base_rates is not None:
+            base_rates_np = base_rates.detach().cpu().numpy()
+
+        batch_counts: Dict[int, Dict[int, float]] = {}
+        for idx in range(c.shape[0]):
+            cid = int(c[idx])
+            label = 1 if float(y[idx]) >= 0.5 else 0
+            weight = float(w[idx]) if w is not None else 1.0
+            if cid not in batch_counts:
+                batch_counts[cid] = {0: 0.0, 1: 0.0}
+            batch_counts[cid][label] += weight
+
+        for cid, counts in batch_counts.items():
+            base_rate = None
+            if base_rates_np is not None and 0 <= cid < base_rates_np.shape[0]:
+                candidate = float(base_rates_np[cid])
+                if math.isfinite(candidate) and 0.0 < candidate < 1.0:
+                    base_rate = candidate
+            if base_rate is None:
+                self._ensure_condition(cid)
+                ones_hist = self._weight_sums[cid][1]
+                zeros_hist = self._weight_sums[cid][0]
+                total_hist = ones_hist + zeros_hist
+                if total_hist > 0:
+                    base_rate = ones_hist / total_hist
+                else:
+                    total_batch = counts[0] + counts[1]
+                    base_rate = (counts[1] / total_batch) if total_batch > 0 else 0.5
+
+            n_pos = self._capacity_for_label(base_rate, 1)
+            n_neg = self._capacity_for_label(base_rate, 0)
+            self._set_capacity(cid, 1, n_pos)
+            self._set_capacity(cid, 0, n_neg)
+
+        for idx in range(c.shape[0]):
+            cid = int(c[idx])
+            label = 1 if float(y[idx]) >= 0.5 else 0
+            weight = float(w[idx]) if w is not None else 1.0
+            self._append(cid, label, weight)
+
+    def stats(self, condition_id: int) -> Optional[Tuple[int, int, int, int, float, float]]:
+        """Return (n_pos, n_neg, count_pos, count_neg, sum_pos, sum_neg)."""
+        if condition_id not in self._buffers:
+            return None
+        n_pos = self._capacities[condition_id][1]
+        n_neg = self._capacities[condition_id][0]
+        count_pos = len(self._buffers[condition_id][1])
+        count_neg = len(self._buffers[condition_id][0])
+        sum_pos = float(self._weight_sums[condition_id][1])
+        sum_neg = float(self._weight_sums[condition_id][0])
+        return n_pos, n_neg, count_pos, count_neg, sum_pos, sum_neg
+
+
 def localized_entropy(
     logits: torch.Tensor,
     targets: torch.Tensor,
@@ -116,6 +232,7 @@ def localized_entropy(
     reduction: str = "mean",
     eps: float = 1e-12,
     debug: bool = False,
+    cross_batch_history: Optional[CrossBatchHistory] = None,
 ) -> torch.Tensor:
     """
     Localized Entropy (LE) implementation using PyTorch.
@@ -165,6 +282,9 @@ def localized_entropy(
     eps:           Small constant for numerical stability.
 
     debug:        When True, prints a compact summary of LE inputs.
+    cross_batch_history:
+                    Optional CrossBatchHistory instance to smooth label counts
+                    across batches via a moving window per condition/label.
 
     Returns
     -------
@@ -199,6 +319,10 @@ def localized_entropy(
         sample_w = sample_weights.view(-1).to(device=z.device, dtype=z.dtype)
         bce_per = bce_per * sample_w
 
+    if cross_batch_history is not None:
+        with torch.no_grad():
+            cross_batch_history.update(c, y, sample_weights=sample_weights, base_rates=base_rates)
+
     total = z.new_zeros(())  # Accumulator for sum_j CE_j(y, yhat) / CE_j(y, p_j).
     unique_conds = torch.unique(c)  # Iterate over observed classes only.
     total_weight = sample_w.sum() if sample_w is not None else y.numel()
@@ -209,25 +333,58 @@ def localized_entropy(
         yj = y[mask]  # Labels for class j to compute base rate p_j.
         if sample_w is not None:
             wj = sample_w[mask]
-            n = wj.sum()
-            ones = (wj * yj).sum()
-            zeros = n - ones
+            batch_n = wj.sum()
+            batch_ones = (wj * yj).sum()
+            batch_zeros = batch_n - batch_ones
         else:
-            n = mask.sum()  # N_j: number of samples in this class.
-            ones = yj.sum()  # Count of positives in class j.
-            zeros = n.to(y.dtype) - ones  # Count of negatives in class j.
+            batch_n = mask.sum()  # N_j: number of samples in this class.
+            batch_ones = yj.sum()  # Count of positives in class j.
+            batch_zeros = batch_n.to(y.dtype) - batch_ones  # Count of negatives in class j.
+
+        ones = batch_ones
+        zeros = batch_zeros
+        if cross_batch_history is not None:
+            hist_stats = cross_batch_history.stats(cid.item())
+            if hist_stats is not None:
+                n_pos, n_neg, count_pos, count_neg, sum_pos, sum_neg = hist_stats
+                ones = z.new_tensor(sum_pos)
+                zeros = z.new_tensor(sum_neg)
+                if debug:
+                    total_hist = sum_pos + sum_neg
+                    rate_hist = (sum_pos / total_hist) if total_hist > 0 else float("nan")
+                    print(
+                        "[localized_entropy][debug][history] "
+                        f"condition={cid.item()} "
+                        f"n_pos={n_pos} n_neg={n_neg} "
+                        f"kept_total={count_pos + count_neg} "
+                        f"kept_pos={count_pos} kept_neg={count_neg} "
+                        f"label1_rate={rate_hist:.6g}"
+                    )
+        n = ones + zeros
         if base_rates is not None:
             idx = cid.item()
             if 0 <= idx < base_rates.numel():
                 pj = base_rates[idx].to(y.dtype)  # Use provided p_j when available.
                 if not torch.isfinite(pj):
-                    print(f"[localized_entropy] base_rates[{idx}] is invalid; using empirical p_j for class {idx}.")
+                    if debug:
+                        print(
+                            f"[localized_entropy][debug] base_rates[{idx}] is invalid; "
+                            f"using empirical p_j for class {idx}."
+                        )
                     pj = ones / n.clamp_min(1)  # Fallback to empirical rate if invalid.
             else:
-                print(f"[localized_entropy] base_rates missing for class {cid.item()}; using empirical p_j.")
+                if debug:
+                    print(
+                        f"[localized_entropy][debug] base_rates missing for class "
+                        f"{cid.item()}; using empirical p_j."
+                    )
                 pj = ones / n.clamp_min(1)  # Fallback to empirical rate if index missing.
         else:
-            print(f"[localized_entropy] base_rates not provided; using empirical p_j for class {cid.item()}.")
+            if debug:
+                print(
+                    f"[localized_entropy][debug] base_rates not provided; "
+                    f"using empirical p_j for class {cid.item()}."
+                )
             pj = ones / n.clamp_min(1)  # Empirical base rate p_j from labels.
         pj = pj.clamp(eps, 1.0 - eps)  # Clamp to avoid log(0) in denominator.
 
@@ -243,9 +400,35 @@ def localized_entropy(
                     class_term = class_term * w  # Optional per-class scaling.
 
         total += class_term  # Sum normalized class terms across all classes.
+        if debug:
+            print(
+                "[localized_entropy][debug] "
+                f"condition={cid.item()} "
+                f"pj={pj.item():.6g} "
+                f"ones={ones.item():.6g} "
+                f"zeros={zeros.item():.6g} "
+                f"num={num.item():.6g} "
+                f"den={den.item():.6g} "
+                f"class_term={class_term.item():.6g} "
+                f"total={total.item():.6g}"
+            )
+
+    
 
     denom = total_weight if isinstance(total_weight, torch.Tensor) else torch.tensor(total_weight, dtype=z.dtype, device=z.device)
     loss = total / denom.clamp_min(1.0)  # Final LE: average by total weight.
+    
+    if debug:
+        print(
+            "[localized_entropy][debug] "
+            f"targets={targets.numel()} "
+            f"unique_conds={unique_conds.numel()} "
+            f"total_weight={float(total_weight):.6g} "
+            f"denom={denom.item():.6g} "
+            f"total={total.item():.6g} "
+            f"loss_before_reduction={loss.item():.6g}"
+        )
+    
     if reduction == "sum":
         return loss * denom  # Return un-averaged total when requested.
     return loss

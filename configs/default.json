@@ -99,6 +99,12 @@
       "alpha": 0.25,
       "gamma": 2.0
     },
+    "localized_entropy": {
+      "cross_batch": {
+        "enabled": true,
+        "amplification_factor": 0.85
+      }
+    },
     "eval_every_n_batches": 0,
     "debug_gradients": false,
     "print_embedding_table": true,
@@ -138,8 +144,8 @@
           },
           "synthetic": {
             "epochs": 3,
-            "lr": 0.001,
-                "lr_zero_after_epochs": null,
+            "lr": 0.006,
+            "lr_zero_after_epochs": 2,
             "batch_size": 25000,
             "eval_every_n_batches": 0
           }
@@ -248,7 +254,7 @@
     "balance_by_condition": true
   },
   "synthetic": {
-    "num_conditions": 5,
+    "num_conditions": 4,
     "min_samples_per_condition": 1000000,
     "max_samples_per_condition": 1000000,
     "numeric_features": [
@@ -261,8 +267,7 @@
       -1.0,
       -2.0,
       -3.0,
-      -4.0,
-      -5.0
+      -4.0
     ],
     "uniform_log10_std": 0.6,
     "use_true_base_rates_for_le": true,
