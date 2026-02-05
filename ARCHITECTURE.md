@@ -101,9 +101,9 @@ Step-by-step pipeline:
 - For LE, per-condition base rates are computed once from the training data
   and reused as fixed normalization factors during training (streaming
   base rates are only used as a fallback when precomputed rates are absent).
-- When `training.localized_entropy.cross_batch.enabled=true`, LE uses a
-  moving-window label history per condition/label (window size computed
-  from `training.localized_entropy.cross_batch.amplification_factor`) to
+- When `training.by_loss.localized_entropy.cross_batch.enabled=true`, LE uses a
+  moving-window label history per condition (window size computed from
+  `training.by_loss.localized_entropy.cross_batch.amplification_rate`) to
   stabilize denominator statistics across batches.
 - Optional mid-epoch eval callbacks can plot prediction histograms.
 - When `training.eval_every_n_batches > 0`, train/eval loss is tracked by

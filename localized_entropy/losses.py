@@ -109,50 +109,69 @@ def focal_loss_with_logits(
 
 
 class CrossBatchHistory:
-    """Track recent examples per condition/label with a moving window."""
+    """Track recent examples per condition with a moving window."""
 
-    def __init__(self, amplification_factor: float, eps: float = 1e-12):
-        if amplification_factor <= 0:
-            raise ValueError("amplification_factor must be > 0 for cross-batch history.")
-        self.amplification_factor = float(amplification_factor)
+    def __init__(self, amplification_rate: float, eps: float = 1e-12):
+        if amplification_rate <= 0:
+            raise ValueError("amplification_rate must be > 0 for cross-batch history.")
+        self.amplification_rate = float(amplification_rate)
         self.eps = float(eps)
-        self._buffers: Dict[int, Dict[int, deque]] = {}
-        self._weight_sums: Dict[int, Dict[int, float]] = {}
-        self._capacities: Dict[int, Dict[int, int]] = {}
+        self._buffers: Dict[int, deque] = {}
+        self._capacity: Dict[int, int] = {}
+        self._count_pos: Dict[int, int] = {}
+        self._count_neg: Dict[int, int] = {}
+        self._sum_pos: Dict[int, float] = {}
+        self._sum_neg: Dict[int, float] = {}
 
-    def _capacity_for_label(self, base_rate: float, label: int) -> int:
-        if label not in (0, 1):
-            raise ValueError("label must be 0 or 1.")
-        rate = base_rate if label == 1 else (1.0 - base_rate)
+    def _capacity_for_condition(self, base_rate: float) -> int:
+        rate = base_rate
         if not math.isfinite(rate) or rate <= 0:
             rate = self.eps
-        capacity = int(math.ceil(self.amplification_factor / max(rate, self.eps)))
+        capacity = int(math.ceil(self.amplification_rate / max(rate, self.eps)))
         return max(1, capacity)
 
     def _ensure_condition(self, condition_id: int) -> None:
         if condition_id not in self._buffers:
-            self._buffers[condition_id] = {0: deque(), 1: deque()}
-            self._weight_sums[condition_id] = {0: 0.0, 1: 0.0}
-            self._capacities[condition_id] = {0: 1, 1: 1}
+            self._buffers[condition_id] = deque()
+            self._capacity[condition_id] = 1
+            self._count_pos[condition_id] = 0
+            self._count_neg[condition_id] = 0
+            self._sum_pos[condition_id] = 0.0
+            self._sum_neg[condition_id] = 0.0
 
-    def _set_capacity(self, condition_id: int, label: int, capacity: int) -> None:
+    def _set_capacity(self, condition_id: int, capacity: int) -> None:
         self._ensure_condition(condition_id)
         capacity = max(1, int(capacity))
-        self._capacities[condition_id][label] = capacity
-        buf = self._buffers[condition_id][label]
+        self._capacity[condition_id] = capacity
+        buf = self._buffers[condition_id]
         while len(buf) > capacity:
-            removed = buf.popleft()
-            self._weight_sums[condition_id][label] -= float(removed)
+            label, weight = buf.popleft()
+            if label == 1:
+                self._count_pos[condition_id] -= 1
+                self._sum_pos[condition_id] -= float(weight)
+            else:
+                self._count_neg[condition_id] -= 1
+                self._sum_neg[condition_id] -= float(weight)
 
     def _append(self, condition_id: int, label: int, weight: float) -> None:
         self._ensure_condition(condition_id)
-        capacity = self._capacities[condition_id][label]
-        buf = self._buffers[condition_id][label]
+        buf = self._buffers[condition_id]
+        capacity = self._capacity[condition_id]
         while len(buf) >= capacity:
-            removed = buf.popleft()
-            self._weight_sums[condition_id][label] -= float(removed)
-        buf.append(float(weight))
-        self._weight_sums[condition_id][label] += float(weight)
+            old_label, old_weight = buf.popleft()
+            if old_label == 1:
+                self._count_pos[condition_id] -= 1
+                self._sum_pos[condition_id] -= float(old_weight)
+            else:
+                self._count_neg[condition_id] -= 1
+                self._sum_neg[condition_id] -= float(old_weight)
+        buf.append((label, float(weight)))
+        if label == 1:
+            self._count_pos[condition_id] += 1
+            self._sum_pos[condition_id] += float(weight)
+        else:
+            self._count_neg[condition_id] += 1
+            self._sum_neg[condition_id] += float(weight)
 
     def update(
         self,
@@ -172,16 +191,16 @@ class CrossBatchHistory:
         if base_rates is not None:
             base_rates_np = base_rates.detach().cpu().numpy()
 
-        batch_counts: Dict[int, Dict[int, float]] = {}
+        batch_weight_sums: Dict[int, Dict[int, float]] = {}
         for idx in range(c.shape[0]):
             cid = int(c[idx])
             label = 1 if float(y[idx]) >= 0.5 else 0
             weight = float(w[idx]) if w is not None else 1.0
-            if cid not in batch_counts:
-                batch_counts[cid] = {0: 0.0, 1: 0.0}
-            batch_counts[cid][label] += weight
+            if cid not in batch_weight_sums:
+                batch_weight_sums[cid] = {0: 0.0, 1: 0.0}
+            batch_weight_sums[cid][label] += weight
 
-        for cid, counts in batch_counts.items():
+        for cid, counts in batch_weight_sums.items():
             base_rate = None
             if base_rates_np is not None and 0 <= cid < base_rates_np.shape[0]:
                 candidate = float(base_rates_np[cid])
@@ -189,8 +208,8 @@ class CrossBatchHistory:
                     base_rate = candidate
             if base_rate is None:
                 self._ensure_condition(cid)
-                ones_hist = self._weight_sums[cid][1]
-                zeros_hist = self._weight_sums[cid][0]
+                ones_hist = self._sum_pos[cid]
+                zeros_hist = self._sum_neg[cid]
                 total_hist = ones_hist + zeros_hist
                 if total_hist > 0:
                     base_rate = ones_hist / total_hist
@@ -198,10 +217,8 @@ class CrossBatchHistory:
                     total_batch = counts[0] + counts[1]
                     base_rate = (counts[1] / total_batch) if total_batch > 0 else 0.5
 
-            n_pos = self._capacity_for_label(base_rate, 1)
-            n_neg = self._capacity_for_label(base_rate, 0)
-            self._set_capacity(cid, 1, n_pos)
-            self._set_capacity(cid, 0, n_neg)
+            capacity = self._capacity_for_condition(base_rate)
+            self._set_capacity(cid, capacity)
 
         for idx in range(c.shape[0]):
             cid = int(c[idx])
@@ -210,16 +227,16 @@ class CrossBatchHistory:
             self._append(cid, label, weight)
 
     def stats(self, condition_id: int) -> Optional[Tuple[int, int, int, int, float, float]]:
-        """Return (n_pos, n_neg, count_pos, count_neg, sum_pos, sum_neg)."""
-        if condition_id not in self._buffers:
+        """Return (capacity, kept_total, count_pos, count_neg, sum_pos, sum_neg)."""
+        if condition_id not in self._capacity:
             return None
-        n_pos = self._capacities[condition_id][1]
-        n_neg = self._capacities[condition_id][0]
-        count_pos = len(self._buffers[condition_id][1])
-        count_neg = len(self._buffers[condition_id][0])
-        sum_pos = float(self._weight_sums[condition_id][1])
-        sum_neg = float(self._weight_sums[condition_id][0])
-        return n_pos, n_neg, count_pos, count_neg, sum_pos, sum_neg
+        capacity = self._capacity[condition_id]
+        count_pos = self._count_pos[condition_id]
+        count_neg = self._count_neg[condition_id]
+        kept_total = len(self._buffers[condition_id])
+        sum_pos = float(self._sum_pos[condition_id])
+        sum_neg = float(self._sum_neg[condition_id])
+        return capacity, kept_total, count_pos, count_neg, sum_pos, sum_neg
 
 
 def localized_entropy(
@@ -284,7 +301,7 @@ def localized_entropy(
     debug:        When True, prints a compact summary of LE inputs.
     cross_batch_history:
                     Optional CrossBatchHistory instance to smooth label counts
-                    across batches via a moving window per condition/label.
+                    across batches via a moving window per condition.
 
     Returns
     -------
@@ -346,7 +363,7 @@ def localized_entropy(
         if cross_batch_history is not None:
             hist_stats = cross_batch_history.stats(cid.item())
             if hist_stats is not None:
-                n_pos, n_neg, count_pos, count_neg, sum_pos, sum_neg = hist_stats
+                capacity, kept_total, count_pos, count_neg, sum_pos, sum_neg = hist_stats
                 ones = z.new_tensor(sum_pos)
                 zeros = z.new_tensor(sum_neg)
                 if debug:
@@ -355,8 +372,8 @@ def localized_entropy(
                     print(
                         "[localized_entropy][debug][history] "
                         f"condition={cid.item()} "
-                        f"n_pos={n_pos} n_neg={n_neg} "
-                        f"kept_total={count_pos + count_neg} "
+                        f"n={capacity} "
+                        f"kept_total={kept_total} "
                         f"kept_pos={count_pos} kept_neg={count_neg} "
                         f"label1_rate={rate_hist:.6g}"
                     )

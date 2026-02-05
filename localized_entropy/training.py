@@ -305,7 +305,10 @@ def train_with_epoch_plots(
     cross_batch_history = None
     if use_le and isinstance(le_cross_batch_cfg, dict):
         enabled = bool(le_cross_batch_cfg.get("enabled", False))
-        amp_factor = le_cross_batch_cfg.get("amplification_factor")
+        amp_factor = le_cross_batch_cfg.get(
+            "amplification_rate",
+            le_cross_batch_cfg.get("amplification_factor"),
+        )
         if enabled and amp_factor is not None:
             amp_value = float(amp_factor)
             if amp_value > 0:

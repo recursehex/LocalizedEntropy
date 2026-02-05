@@ -374,9 +374,12 @@ def run_repeated_loss_experiments(
                 lr_zero_after_epochs = train_cfg.get("lr_zero_after_epochs")
             le_cross_batch_cfg = None
             if loss_mode == "localized_entropy" and isinstance(train_cfg, dict):
-                le_cfg = train_cfg.get("localized_entropy")
-                if isinstance(le_cfg, dict):
-                    le_cross_batch_cfg = le_cfg.get("cross_batch")
+                if isinstance(train_cfg.get("cross_batch"), dict):
+                    le_cross_batch_cfg = train_cfg.get("cross_batch")
+                else:
+                    le_cfg = train_cfg.get("localized_entropy")
+                    if isinstance(le_cfg, dict):
+                        le_cross_batch_cfg = le_cfg.get("cross_batch")
             result = train_single_loss(
                 model=model,
                 loss_mode=loss_mode,

@@ -75,14 +75,16 @@ Template model definitions included in `configs/default.json`:
     alpha reweighting).
   - `training.focal.gamma`: Focusing parameter (higher = more focus on hard
     examples).
-- `training.localized_entropy`: Localized Entropy-specific tuning options.
-  - `training.localized_entropy.cross_batch.enabled`: If true, maintain a
+- `training.by_loss.localized_entropy`: Localized Entropy-specific tuning
+  options applied when the resolved loss mode is LE.
+  - `training.by_loss.localized_entropy.cross_batch.enabled`: If true, maintain a
     moving-window history of labels per condition/label to stabilize LE
     denominators across batches.
-  - `training.localized_entropy.cross_batch.amplification_factor`: Scalar
+  - `training.by_loss.localized_entropy.cross_batch.amplification_rate`: Scalar
     used to compute per-condition window sizes as
-    `N = amplification_factor / base_rate` (separately for label 1 using
-    `base_rate` and label 0 using `1 - base_rate`).
+    `N = amplification_rate / base_rate`. The window is a single FIFO
+    queue per condition (total length capped to `N`). `amplification_factor`
+    is accepted as a legacy alias.
 - `training.debug_gradients`: If true, print raw per-parameter gradient
   tensors every batch. Recommended batch size of 3. WARNING: this is extremely performance intensive and will generate massive output!
 - `training.print_embedding_table`: If true, print the full condition
@@ -129,6 +131,10 @@ Example:
       }
     },
     "localized_entropy": {
+      "cross_batch": {
+        "enabled": true,
+        "amplification_rate": 0.85
+      },
       "by_source": {
         "ctr": {
           "epochs": 4,
