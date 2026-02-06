@@ -118,7 +118,7 @@
             "eval_every_n_batches": 0
           },
           "synthetic": {
-            "epochs": 5,
+            "epochs": 3,
             "lr": 0.001,
             "lr_category": null,
             "batch_size": 25000,
@@ -129,7 +129,7 @@
       "localized_entropy": {
         "cross_batch": {
           "enabled": true,
-          "amplification_rate": 0.2
+          "amplification_rate": 0.4
         },
         "by_source": {
           "ctr": {
@@ -141,9 +141,10 @@
             "eval_every_n_batches": 0
           },
           "synthetic": {
-            "epochs": 5,
+            "epochs": 10,
             "lr": 0.006,
-            "lr_zero_after_epochs": 2,
+             "lr_category": 0.01,
+            "lr_zero_after_epochs": 3,
             "batch_size": 25000,
             "eval_every_n_batches": 0
           }
@@ -160,7 +161,7 @@
             "eval_every_n_batches": 0
           },
           "synthetic": {
-            "epochs": 3,
+            "epochs": 1,
             "lr": 0.001,
             "lr_category": null,
             "lr_zero_after_epochs": null,
