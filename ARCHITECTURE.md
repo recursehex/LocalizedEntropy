@@ -106,7 +106,8 @@ Step-by-step pipeline:
 - When `training.by_loss.localized_entropy.cross_batch.enabled=true`, LE uses a
   moving-window label history per condition (window size computed from
   `training.by_loss.localized_entropy.cross_batch.amplification_rate`) to
-  stabilize denominator statistics across batches.
+  stabilize both numerator CE sums and denominator label-count statistics
+  across batches.
 - Optional mid-epoch eval callbacks can plot prediction histograms.
 - When `training.eval_every_n_batches > 0`, train/eval loss is tracked by
   batch for additional diagnostics in the loss curve plot.

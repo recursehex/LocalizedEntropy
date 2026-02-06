@@ -3,7 +3,7 @@ import math
 import pytest
 import torch
 
-from localized_entropy.losses import focal_loss_with_logits, localized_entropy
+from localized_entropy.losses import CrossBatchHistory, focal_loss_with_logits, localized_entropy
 
 
 def test_localized_entropy_known_value_balanced():
@@ -145,3 +145,47 @@ def test_focal_loss_gamma_lt_one_stays_finite():
     grads = logits.grad
     assert grads is not None
     assert torch.isfinite(grads).all().item()
+
+
+def test_localized_entropy_cross_batch_history_uses_history_for_numerator():
+    """Ensure cross-batch LE uses history for both numerator and denominator."""
+    history = CrossBatchHistory(amplification_rate=10.0)
+    conds = torch.zeros(2, dtype=torch.long)
+    targets = torch.tensor([1.0, 0.0], dtype=torch.float64)
+
+    logits_1 = torch.zeros(2, dtype=torch.float64, requires_grad=True)
+    loss_1 = localized_entropy(
+        logits_1,
+        targets,
+        conds,
+        cross_batch_history=history,
+    )
+    loss_1.backward()
+    assert logits_1.grad is not None
+    assert torch.isfinite(logits_1.grad).all().item()
+
+    logits_2 = torch.tensor([10.0, -10.0], dtype=torch.float64, requires_grad=True)
+    loss_2 = localized_entropy(
+        logits_2,
+        targets,
+        conds,
+        cross_batch_history=history,
+    )
+    loss_2.backward()
+    assert logits_2.grad is not None
+    assert torch.isfinite(logits_2.grad).all().item()
+    assert logits_2.grad.abs().max().item() > 0.0
+
+    bce_1 = torch.nn.functional.binary_cross_entropy_with_logits(
+        torch.zeros(2, dtype=torch.float64),
+        targets,
+        reduction="sum",
+    )
+    bce_2 = torch.nn.functional.binary_cross_entropy_with_logits(
+        torch.tensor([10.0, -10.0], dtype=torch.float64),
+        targets,
+        reduction="sum",
+    )
+    den = 4.0 * math.log(2.0)
+    expected = ((bce_1 + bce_2) / den) / 2.0
+    assert loss_2.item() == pytest.approx(expected.item(), rel=1e-6, abs=1e-8)
