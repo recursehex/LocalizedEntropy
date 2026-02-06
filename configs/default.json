@@ -96,8 +96,8 @@
     "batch_size": 25000,
     "loss_mode": "both",
     "focal": {
-      "alpha": 0.25,
-      "gamma": 2.0
+      "alpha": 0.20,
+      "gamma": 0.5
     },
     "eval_every_n_batches": 0,
     "debug_gradients": false,
@@ -129,7 +129,7 @@
       "localized_entropy": {
         "cross_batch": {
           "enabled": true,
-          "amplification_rate": 0.2
+          "amplification_rate": 0.4
         },
         "by_source": {
           "ctr": {

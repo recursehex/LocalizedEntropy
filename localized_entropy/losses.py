@@ -83,12 +83,17 @@ def focal_loss_with_logits(
     """Compute binary focal loss from logits with optional sample weighting."""
     z = logits.view(-1)
     y = targets.view(-1).to(dtype=z.dtype)
+    if not torch.is_floating_point(z):
+        raise TypeError("focal_loss_with_logits expects floating-point logits.")
     bce = F.binary_cross_entropy_with_logits(z, y, reduction="none")
+    # Keep p_t away from exactly 0/1 to avoid unstable gradients when gamma < 1.
+    dtype_eps = float(torch.finfo(z.dtype).eps)
+    pt_eps = max(float(eps), dtype_eps)
     p = torch.sigmoid(z)
     pt = (p * y) + ((1.0 - p) * (1.0 - y))
-    pt = pt.clamp(eps, 1.0 - eps)
+    pt = pt.clamp(pt_eps, 1.0 - pt_eps)
     gamma_value = 2.0 if gamma is None else float(gamma)
-    modulator = (1.0 - pt).pow(gamma_value)
+    modulator = (1.0 - pt).clamp_min(pt_eps).pow(gamma_value)
     loss = modulator * bce
     if alpha is not None:
         alpha_value = float(alpha)

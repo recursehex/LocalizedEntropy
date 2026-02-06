@@ -3,7 +3,7 @@ import math
 import pytest
 import torch
 
-from localized_entropy.losses import localized_entropy
+from localized_entropy.losses import focal_loss_with_logits, localized_entropy
 
 
 def test_localized_entropy_known_value_balanced():
@@ -125,3 +125,23 @@ def test_localized_entropy_gradcheck():
         return localized_entropy(z, targets, conds)
 
     assert torch.autograd.gradcheck(loss_fn, (logits,), eps=1e-6, atol=1e-4, rtol=1e-3)
+
+
+def test_focal_loss_gamma_lt_one_stays_finite():
+    """Ensure focal gradients stay finite for gamma<1 and confident logits."""
+    logits = torch.tensor([20.0, -20.0, 15.0, -15.0], dtype=torch.float64, requires_grad=True)
+    targets = torch.tensor([1.0, 0.0, 1.0, 0.0], dtype=torch.float64)
+
+    loss = focal_loss_with_logits(
+        logits,
+        targets,
+        alpha=0.25,
+        gamma=0.5,
+        reduction="mean",
+    )
+    assert torch.isfinite(loss).item()
+
+    loss.backward()
+    grads = logits.grad
+    assert grads is not None
+    assert torch.isfinite(grads).all().item()

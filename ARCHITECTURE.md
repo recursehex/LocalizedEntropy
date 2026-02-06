@@ -89,6 +89,8 @@ Step-by-step pipeline:
   - BCE (`torch.nn.BCEWithLogitsLoss`).
   - Focal loss (`localized_entropy/losses.py`), configured by
     `training.focal.alpha` and `training.focal.gamma`.
+  - Focal loss numerics clamp `p_t` away from exact 0/1 using dtype-aware
+    epsilon to avoid non-finite gradients when `gamma < 1`.
 - When per-sample weights are provided (synthetic reweighting), BCE and
   LE scale each sample by its weight and normalize by total weight.
 - When configured, BCE/LE use per-loss training overrides for
