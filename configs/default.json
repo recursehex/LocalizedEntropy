@@ -129,7 +129,7 @@
       "localized_entropy": {
         "cross_batch": {
           "enabled": true,
-          "amplification_rate": 1.1
+          "amplification_rate": 1.35
         },
         "by_source": {
           "ctr": {
