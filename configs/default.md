@@ -77,11 +77,11 @@ Template model definitions included in `configs/default.json`:
     examples).
 - `training.by_loss.localized_entropy`: Localized Entropy-specific tuning
   options applied when the resolved loss mode is LE.
-  - `training.by_loss.localized_entropy.cross_batch.enabled`: If true, maintain a
-    moving-window history of labels per condition/label to stabilize LE
-    denominators across batches.
-  - `training.by_loss.localized_entropy.cross_batch.amplification_rate`: Scalar
-    used to compute per-condition window sizes as
+  - `training.by_loss.localized_entropy.by_source.<source>.cross_batch.enabled`:
+    If true, maintain a moving-window history of labels per condition/label
+    to stabilize LE denominators across batches for that source.
+  - `training.by_loss.localized_entropy.by_source.<source>.cross_batch.amplification_rate`:
+    Scalar used to compute per-condition window sizes as
     `N = amplification_rate / base_rate`. The window is a single FIFO
     queue per condition (total length capped to `N`). `amplification_factor`
     is accepted as a legacy alias.
@@ -131,22 +131,26 @@ Example:
       }
     },
     "localized_entropy": {
-      "cross_batch": {
-        "enabled": true,
-        "amplification_rate": 0.85
-      },
       "by_source": {
         "ctr": {
           "epochs": 4,
           "batch_size": 20000,
-          "lr": 0.001
+          "lr": 0.001,
+          "cross_batch": {
+            "enabled": false,
+            "amplification_rate": 0.85
+          }
         },
         "synthetic": {
           "epochs": 8,
           "batch_size": 10000,
           "lr": 0.0005,
           "lr_category": 0.00025,
-          "lr_zero_after_epochs": 2
+          "lr_zero_after_epochs": 2,
+          "cross_batch": {
+            "enabled": true,
+            "amplification_rate": 0.85
+          }
         }
       }
     }

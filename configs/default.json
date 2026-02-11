@@ -127,10 +127,6 @@
         }
       },
       "localized_entropy": {
-        "cross_batch": {
-          "enabled": true,
-          "amplification_rate": 1.35
-        },
         "by_source": {
           "ctr": {
             "epochs": 3,
@@ -138,14 +134,22 @@
             "lr_category": null,
             "lr_zero_after_epochs": null,
             "batch_size": 25000,
-            "eval_every_n_batches": 0
+            "eval_every_n_batches": 0,
+            "cross_batch": {
+              "enabled": false,
+              "amplification_rate": 0.35
+            }
           },
           "synthetic": {
             "epochs": 5,
             "lr": 0.006,
             "lr_zero_after_epochs": 2,
             "batch_size": 25000,
-            "eval_every_n_batches": 0
+            "eval_every_n_batches": 0,
+            "cross_batch": {
+              "enabled": true,
+              "amplification_rate": 1.35
+            }
           }
         }
       },
@@ -185,7 +189,7 @@
     "dropout": 0.3
   },
   "data": {
-    "source": "synthetic",
+    "source": "ctr",
     "train_split": 0.9,
     "standardize": true,
     "standardize_eps": 1e-06,
