@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
@@ -14,6 +15,134 @@ from localized_entropy.analysis import (
     per_condition_calibration,
 )
 from localized_entropy.experiments import TrainRunResult
+from localized_entropy.training import GradSqStats
+
+
+@dataclass(frozen=True)
+class GradMseComparison:
+    """Raw and scale-normalized gradient-MSE comparison outputs."""
+    per_condition: pd.DataFrame
+    bce_global_mse: float
+    le_global_mse: float
+    le_over_bce_global_mse: float
+
+
+def _safe_ratio(
+    numer: np.ndarray,
+    denom: np.ndarray,
+    *,
+    default: float = np.nan,
+) -> np.ndarray:
+    """Compute elementwise numer/denom while handling divide-by-zero."""
+    numer = np.asarray(numer, dtype=np.float64)
+    denom = np.asarray(denom, dtype=np.float64)
+    out = np.full(numer.shape, default, dtype=np.float64)
+    mask = np.isfinite(numer) & np.isfinite(denom) & (denom != 0.0)
+    np.divide(numer, denom, out=out, where=mask)
+    return out
+
+
+def grad_mse_global_mean(stats: GradSqStats) -> float:
+    """Compute weighted global mean grad-MSE from per-condition sums/counts."""
+    sums = np.asarray(stats.sum_by_condition, dtype=np.float64).reshape(-1)
+    counts = np.asarray(stats.count_by_condition, dtype=np.float64).reshape(-1)
+    if sums.shape != counts.shape:
+        raise ValueError("sum_by_condition and count_by_condition must have matching shapes.")
+    valid = np.isfinite(sums) & np.isfinite(counts) & (counts > 0.0)
+    if not np.any(valid):
+        return float("nan")
+    total_count = float(np.sum(counts[valid]))
+    if total_count <= 0.0:
+        return float("nan")
+    return float(np.sum(sums[valid]) / total_count)
+
+
+def build_grad_mse_comparison(
+    bce_stats: GradSqStats,
+    le_stats: GradSqStats,
+    *,
+    condition_label: str = "condition",
+) -> GradMseComparison:
+    """Build raw and globally normalized LE-vs-BCE grad-MSE diagnostics."""
+    bce_vals = np.asarray(bce_stats.mean_by_condition, dtype=np.float64).reshape(-1)
+    le_vals = np.asarray(le_stats.mean_by_condition, dtype=np.float64).reshape(-1)
+    if bce_vals.shape != le_vals.shape:
+        raise ValueError("BCE and LE mean_by_condition arrays must have matching shapes.")
+
+    bce_global = grad_mse_global_mean(bce_stats)
+    le_global = grad_mse_global_mean(le_stats)
+    global_ratio = float(_safe_ratio(np.array([le_global]), np.array([bce_global]))[0])
+
+    raw_ratio = _safe_ratio(le_vals, bce_vals)
+    bce_norm = _safe_ratio(bce_vals, np.full_like(bce_vals, bce_global))
+    le_norm = _safe_ratio(le_vals, np.full_like(le_vals, le_global))
+    norm_ratio = _safe_ratio(le_norm, bce_norm)
+
+    per_condition = pd.DataFrame(
+        {
+            condition_label: np.arange(bce_vals.shape[0], dtype=np.int64),
+            "bce_grad_mse": bce_vals,
+            "le_grad_mse": le_vals,
+            "le_over_bce_grad_mse": raw_ratio,
+            "bce_grad_mse_norm_global": bce_norm,
+            "le_grad_mse_norm_global": le_norm,
+            "le_over_bce_grad_mse_norm_global": norm_ratio,
+        }
+    )
+    return GradMseComparison(
+        per_condition=per_condition,
+        bce_global_mse=float(bce_global),
+        le_global_mse=float(le_global),
+        le_over_bce_global_mse=global_ratio,
+    )
+
+
+def format_grad_mse_summary(
+    comparison: GradMseComparison,
+    *,
+    condition_label: str = "condition",
+    top_k: int = 20,
+    float_format: str = "{:.6g}",
+) -> str:
+    """Format grad-MSE diagnostics with raw and normalized condition ratios."""
+    per_condition = comparison.per_condition
+    lines = [
+        f"Training per-{condition_label} grad MSE ratio (LE/BCE, raw logits-grad scale)",
+        format_comparison_table(
+            per_condition,
+            columns=[
+                condition_label,
+                "bce_grad_mse",
+                "le_grad_mse",
+                "le_over_bce_grad_mse",
+            ],
+            top_k=top_k,
+            float_format=float_format,
+        ),
+        "",
+        (
+            f"Global logits-grad MSE scale: BCE={float_format.format(comparison.bce_global_mse)} "
+            f"| LE={float_format.format(comparison.le_global_mse)} "
+            f"| LE/BCE={float_format.format(comparison.le_over_bce_global_mse)}"
+        ),
+        "",
+        (
+            f"Training per-{condition_label} grad MSE ratio "
+            "(LE/BCE, normalized by each loss global grad-MSE)"
+        ),
+        format_comparison_table(
+            per_condition,
+            columns=[
+                condition_label,
+                "bce_grad_mse_norm_global",
+                "le_grad_mse_norm_global",
+                "le_over_bce_grad_mse_norm_global",
+            ],
+            top_k=top_k,
+            float_format=float_format,
+        ),
+    ]
+    return "\n".join(lines)
 
 
 def build_comparison_frame(

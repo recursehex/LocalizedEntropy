@@ -287,7 +287,7 @@ def train_with_epoch_plots(
     val_losses: List[float] = []
     model_dtype = _resolve_model_dtype(model)
     loss_mode = loss_mode.lower().strip()
-    bce_loss = nn.BCEWithLogitsLoss()
+    bce_loss = nn.BCEWithLogitsLoss(reduction="none")
     base_lr_zero_after = None
     if lr_zero_after_epochs is not None:
         base_lr_zero_after = int(lr_zero_after_epochs)

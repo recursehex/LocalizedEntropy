@@ -93,6 +93,8 @@ Step-by-step pipeline:
     epsilon to avoid non-finite gradients when `gamma < 1`.
 - When per-sample weights are provided (synthetic reweighting), BCE and
   LE scale each sample by its weight and normalize by total weight.
+  BCE training computes per-sample logits loss (`reduction="none"`)
+  before applying sample weights.
 - When configured, BCE/LE use per-loss training overrides for
   `epochs`, `lr`, and `batch_size`, rebuilding dataloaders per loss to
   honor different batch sizes.
@@ -118,7 +120,11 @@ Step-by-step pipeline:
   per-condition mean-squared logits gradients for BCE vs LE, plus
   per-class (label 0/1) gradient MSE to report a class MSE ratio.
   On MPS, gradient accumulation uses float32 because float64 is unsupported.
-  The notebook prints a per-condition LE/BCE gradient MSE ratio table.
+  The diagnostics now support both:
+  - raw per-condition LE/BCE logits-gradient MSE ratios, and
+  - per-condition ratios normalized by each loss's global grad-MSE scale
+    (so condition-shape differences can be compared independently of
+    absolute loss-scale differences).
 - The notebook can enable raw per-parameter gradient debug prints per
   batch via the `debug_gradients` training flag (WARNING: extremely performance
   intensive!).
@@ -237,7 +243,8 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
 - `localized_entropy/experiments.py`: experiment helpers for building
   models, resolving eval splits, and training single-loss runs.
 - `localized_entropy/compare.py`: per-condition BCE vs LE comparison
-  table builder and plot/save utilities.
+  table builder, repeated-run summaries, plus grad-MSE comparison helpers
+  that return raw and globally normalized LE/BCE grad-MSE diagnostics.
 
 ## Plotting and outputs
 

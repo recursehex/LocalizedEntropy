@@ -143,13 +143,13 @@ Example:
         },
         "synthetic": {
           "epochs": 8,
-          "batch_size": 10000,
-          "lr": 0.0005,
-          "lr_category": 0.00025,
+          "batch_size": 25000,
+          "lr": 0.006,
+          "lr_category": null,
           "lr_zero_after_epochs": 2,
           "cross_batch": {
             "enabled": true,
-            "amplification_rate": 0.85
+            "amplification_rate": 1.35
           }
         }
       }
@@ -289,7 +289,7 @@ These settings are used when `data.source` is `synthetic`.
 - `synthetic.uniform_log10_means`: List of log10 probability means (one
   per condition) used in uniform mode.
 - `synthetic.uniform_log10_std`: Standard deviation in log10 space for
-  the bell curve used in uniform mode.
+  the bell curve used in uniform mode (default `0.4` in base config).
   Both `uniform_log10_means` and `uniform_log10_std` are required when
   using uniform modes.
 - `synthetic.use_true_base_rates_for_le`: If true, LE denominators use
