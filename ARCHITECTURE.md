@@ -129,10 +129,12 @@ Step-by-step pipeline:
 - The notebook can enable raw per-parameter gradient debug prints per
   batch via the `debug_gradients` training flag (WARNING: extremely performance
   intensive!).
-- When `debug_le_inputs=true`, the training loop prints per-batch input
-  feature summaries (x, x_cat, conditions, targets) and forwards a debug
-  flag into `localized_entropy` to summarize logits/targets/conditions and
-  optional base-rate/weight tensors.
+- When `training.debug_le_inputs=true` (or per-loss/per-source override
+  `training.by_loss.<loss>[.by_source.<source>].debug_le_inputs=true`), the
+  training loop prints per-batch input feature summaries (x, x_cat,
+  conditions, targets) and forwards a debug flag into `localized_entropy`
+  to summarize logits/targets/conditions and optional base-rate/weight
+  tensors. The default path keeps this disabled.
 - If `training.print_embedding_table=true`, the loop prints the full
   condition embedding table (`model.embedding.weight`) after each epoch.
 - If `training.loss_mode` is set to `both`, the notebook trains BCE and

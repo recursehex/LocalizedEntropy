@@ -260,7 +260,7 @@ def train_with_epoch_plots(
     track_eval_batch_losses: bool = False,
     track_grad_sq_sums: bool = False,
     debug_gradients: bool = False,
-    debug_le_inputs: bool = True,
+    debug_le_inputs: bool = False,
     le_cross_batch_cfg: Optional[dict] = None,
     print_embedding_table: bool = False,
 ) -> Tuple[List[float], List[float], Optional[GradSqStats], List[dict]]:

@@ -213,7 +213,7 @@ def train_single_loss(
     collect_grad_sq_sums: bool = False,
     collect_eval_batch_losses: bool = False,
     debug_gradients: bool = False,
-    debug_le_inputs: bool = True,
+    debug_le_inputs: bool = False,
     le_cross_batch_cfg: Optional[dict] = None,
     print_embedding_table: bool = False,
 ) -> TrainRunResult:
@@ -367,6 +367,18 @@ def run_repeated_loss_experiments(
             model = build_model(cfg, splits, device, dtype=model_dtype)
             loss_bundle = per_loss[loss_mode]
             train_cfg = loss_bundle["train_cfg"]
+            debug_gradients = bool(
+                train_cfg.get(
+                    "debug_gradients",
+                    cfg.get("training", {}).get("debug_gradients", False),
+                )
+            )
+            debug_le_inputs = bool(
+                train_cfg.get(
+                    "debug_le_inputs",
+                    cfg.get("training", {}).get("debug_le_inputs", False),
+                )
+            )
             lr_category = None
             lr_zero_after_epochs = None
             if data_source == "synthetic" and loss_mode == "localized_entropy":
@@ -404,6 +416,8 @@ def run_repeated_loss_experiments(
                 eval_batch_callback=None,
                 print_embedding_table=train_cfg.get("print_embedding_table", False),
                 collect_eval_logits=collect_eval_logits,
+                debug_gradients=debug_gradients,
+                debug_le_inputs=debug_le_inputs,
                 le_cross_batch_cfg=le_cross_batch_cfg,
             )
             results[loss_mode].append(result)

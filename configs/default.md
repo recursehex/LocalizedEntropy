@@ -87,6 +87,10 @@ Template model definitions included in `configs/default.json`:
     is accepted as a legacy alias.
 - `training.debug_gradients`: If true, print raw per-parameter gradient
   tensors every batch. Recommended batch size of 3. WARNING: this is extremely performance intensive and will generate massive output!
+- `training.debug_le_inputs`: If true, print per-batch LE debug summaries
+  (inputs in the training loop plus tensor summaries inside
+  `localized_entropy`). Defaults to `false`; can also be overridden under
+  `training.by_loss.<loss>` and `training.by_loss.<loss>.by_source.<source>`.
 - `training.print_embedding_table`: If true, print the full condition
   embedding table after each epoch.
 - `training.by_loss`: Optional per-loss overrides keyed by `bce`,
