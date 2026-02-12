@@ -186,6 +186,8 @@ def evaluate(
         total_denom += batch_denom
         p = torch.sigmoid(logits).detach().cpu().numpy()
         preds_all.append(p)
+    if not preds_all:
+        return float("nan"), np.empty((0,), dtype=np.float32)
     mean_loss = total_loss / max(1.0, total_denom)
     preds = np.concatenate(preds_all, axis=0)
     return mean_loss, preds

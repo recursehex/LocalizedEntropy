@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 import torch
 from torch import nn
@@ -121,3 +122,30 @@ def test_bce_evaluate_unit_weights_matches_unweighted():
         )
     )
     assert eval_loss == pytest.approx(expected_unweighted, rel=1e-6, abs=1e-8)
+
+
+def test_evaluate_empty_loader_returns_nan_and_empty_predictions():
+    """Evaluation on an empty loader should not raise and should return empty preds."""
+    x = torch.empty((0, 1), dtype=torch.float32)
+    x_cat = torch.empty((0, 1), dtype=torch.long)
+    c = torch.empty((0,), dtype=torch.long)
+    y = torch.empty((0,), dtype=torch.float32)
+    w = torch.empty((0,), dtype=torch.float32)
+
+    loader = DataLoader(
+        TensorDataset(x, x_cat, c, y, w),
+        batch_size=2,
+        shuffle=False,
+    )
+    model = _PassThroughLogitModel()
+
+    eval_loss, preds = evaluate(
+        model=model,
+        loader=loader,
+        device=torch.device("cpu"),
+        loss_mode="bce",
+    )
+
+    assert np.isnan(eval_loss)
+    assert preds.dtype == np.float32
+    assert preds.shape == (0,)
