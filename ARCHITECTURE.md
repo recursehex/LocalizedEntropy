@@ -49,7 +49,8 @@ Step-by-step pipeline:
   `ctr.balance_by_condition=true`.
 - Optional synthetic negative downsampling/weights are applied to the
   training split when `synthetic.reweighting.enabled=true` (evaluation
-  splits remain unweighted).
+  splits remain unweighted). This path is DEPRECATAED and prints a
+  warning when enabled.
 - Optional feature standardization happens via
   `localized_entropy/data/common.py`.
 - Dataloaders:
@@ -57,7 +58,7 @@ Step-by-step pipeline:
     `TensorBatchLoader` is used to stage tensors on the accelerator.
   - Otherwise, standard PyTorch `DataLoader` is used with a
     worker fallback strategy (CUDA keeps workers at 0 by default for stability).
-  - Batches include per-sample weights (all ones unless synthetic reweighting is enabled).
+  - Batches include per-sample weights (all ones unless DEPRECATED synthetic reweighting is enabled).
 
 4) Diagnostics before training
 - Feature stats, condition stats, and label stats are printed via
@@ -91,7 +92,7 @@ Step-by-step pipeline:
     `training.focal.alpha` and `training.focal.gamma`.
   - Focal loss numerics clamp `p_t` away from exact 0/1 using dtype-aware
     epsilon to avoid non-finite gradients when `gamma < 1`.
-- When per-sample weights are provided (synthetic reweighting), BCE and
+- When per-sample weights are provided (DEPRECATED synthetic reweighting), BCE and
   LE scale each sample by its weight and normalize by total weight.
   BCE training computes per-sample logits loss (`reduction="none"`)
   before applying sample weights.
@@ -223,7 +224,8 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
   label-derived rates to avoid zero-positive collapse.
 - When `synthetic.reweighting.enabled=true`, the training split is
   downsampled by condition for negative labels and the kept negatives
-  receive per-sample weights (positives are kept with weight 1).
+  receive per-sample weights (positives are kept with weight 1). This
+  component is DEPRECATED and emits a warning when enabled.
 
 ## Losses and metrics
 

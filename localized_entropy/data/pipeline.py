@@ -380,7 +380,7 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool, use_mps: bool 
             removed = before - len(y_train)
             mode = stats.get("mode", "unknown")
             print(
-                "Synthetic reweighting enabled: "
+                "Synthetic reweighting enabled (DEPRECATED): "
                 f"mode={mode} removed={removed:,} negatives; "
                 f"kept={len(y_train):,} of {before:,} training rows."
             )

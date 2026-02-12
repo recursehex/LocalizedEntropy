@@ -1,7 +1,13 @@
+import warnings
 from typing import Dict, Optional, Tuple
 
 import numpy as np
 from scipy.stats import norm
+
+REWEIGHTING_DEPRECATION_MESSAGE = (
+    "synthetic.reweighting is deprecated and will be removed in a future release. "
+    "Disable synthetic.reweighting.enabled to silence this warning."
+)
 
 
 def _sigmoid(x: np.ndarray, mu: float, s: float) -> np.ndarray:
@@ -423,6 +429,8 @@ def compute_negative_reweighting(
     if not enabled:
         weights = np.ones((n_total,), dtype=np.float32)
         return keep_all, weights, {"enabled": False}
+    print(f"[WARN] {REWEIGHTING_DEPRECATION_MESSAGE}")
+    warnings.warn(REWEIGHTING_DEPRECATION_MESSAGE, FutureWarning, stacklevel=2)
 
     if rng is None:
         rng = np.random.default_rng()
