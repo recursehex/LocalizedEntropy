@@ -126,21 +126,24 @@ def evaluate(
     model.eval()
     model_dtype = _resolve_model_dtype(model)
     total_loss = 0.0
-    total_count = 0
+    total_denom = 0.0
     preds_all = []
     verified_cuda_batch = False
     loss_mode = loss_mode.lower().strip()
     bce_loss = nn.BCEWithLogitsLoss(reduction="none")
     for batch in loader:
-        x, x_cat, c, y, _ = batch
+        x, x_cat, c, y, w = batch
         x = x.to(device, non_blocking=non_blocking, dtype=model_dtype)
         x_cat = x_cat.to(device, non_blocking=non_blocking)
         c = c.to(device, non_blocking=non_blocking)
         y = y.to(device, non_blocking=non_blocking, dtype=model_dtype)
+        w = w.to(device, non_blocking=non_blocking, dtype=model_dtype)
         logits = model(x, x_cat, c)
+        w_flat = w.view(-1).to(logits.dtype)
+        has_non_unit_weights = bool((w_flat != 1.0).any().item())
         # Guard against inadvertently running evaluation on CPU when CUDA is expected.
         if (device.type == "cuda") and (not verified_cuda_batch):
-            tensors = (x, x_cat, c, y, logits)
+            tensors = (x, x_cat, c, y, w, logits)
             if any(t.device.type != "cuda" for t in tensors):
                 raise RuntimeError("Expected CUDA tensors during evaluation but found CPU tensors.")
             verified_cuda_batch = True
@@ -155,24 +158,35 @@ def evaluate(
                 ),
                 condition_weights=(
                     torch.as_tensor(condition_weights, device=logits.device, dtype=logits.dtype)
-                    if condition_weights is not None else None),
+                    if condition_weights is not None else None
+                ),
+                sample_weights=w if has_non_unit_weights else None,
             )
+            batch_denom = float(w_flat.sum().item()) if has_non_unit_weights else float(x.size(0))
         elif loss_mode == "bce":
-            loss = bce_loss(logits, y).mean()
+            bce_per = bce_loss(logits, y).view(-1)
+            if has_non_unit_weights:
+                loss = (bce_per * w_flat).sum() / w_flat.sum().clamp_min(1.0)
+                batch_denom = float(w_flat.sum().item())
+            else:
+                loss = bce_per.mean()
+                batch_denom = float(x.size(0))
         elif loss_mode == "focal":
             loss = focal_loss_with_logits(
                 logits=logits,
                 targets=y,
                 alpha=focal_alpha,
                 gamma=focal_gamma,
+                sample_weights=w if has_non_unit_weights else None,
             )
+            batch_denom = float(w_flat.sum().item()) if has_non_unit_weights else float(x.size(0))
         else:
             raise ValueError(f"Unsupported loss_mode: {loss_mode}")
-        total_loss += float(loss.item()) * x.size(0)
-        total_count += x.size(0)
+        total_loss += float(loss.item()) * batch_denom
+        total_denom += batch_denom
         p = torch.sigmoid(logits).detach().cpu().numpy()
         preds_all.append(p)
-    mean_loss = total_loss / max(1, total_count)
+    mean_loss = total_loss / max(1.0, total_denom)
     preds = np.concatenate(preds_all, axis=0)
     return mean_loss, preds
 

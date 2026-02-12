@@ -92,10 +92,12 @@ Step-by-step pipeline:
     `training.focal.alpha` and `training.focal.gamma`.
   - Focal loss numerics clamp `p_t` away from exact 0/1 using dtype-aware
     epsilon to avoid non-finite gradients when `gamma < 1`.
-- When per-sample weights are provided (DEPRECATED synthetic reweighting), BCE and
-  LE scale each sample by its weight and normalize by total weight.
-  BCE training computes per-sample logits loss (`reduction="none"`)
+- When per-sample weights are provided (DEPRECATED synthetic reweighting),
+  BCE, LE, and focal training scale each sample by its weight and normalize
+  by total weight. BCE uses per-sample logits loss (`reduction="none"`)
   before applying sample weights.
+- Labeled evaluation applies sample weights for BCE/LE/focal when weights are
+  non-uniform; unit-weight batches follow the original unweighted path.
 - When configured, BCE/LE use per-loss training overrides for
   `epochs`, `lr`, and `batch_size`, rebuilding dataloaders per loss to
   honor different batch sizes.
