@@ -96,8 +96,8 @@ Step-by-step pipeline:
   BCE, LE, and focal training scale each sample by its weight and normalize
   by total weight. BCE uses per-sample logits loss (`reduction="none"`)
   before applying sample weights.
-- Labeled evaluation applies sample weights for BCE/LE/focal when weights are
-  non-uniform; unit-weight batches follow the original unweighted path.
+- Labeled evaluation applies sample weights for BCE/LE/focal on all batches;
+  unit weights are mathematically equivalent to the unweighted formulation.
 - When configured, BCE/LE use per-loss training overrides for
   `epochs`, `lr`, and `batch_size`, rebuilding dataloaders per loss to
   honor different batch sizes.
@@ -146,6 +146,8 @@ Step-by-step pipeline:
 
 9) Post-training evaluation
 - Evaluates on the configured split (`evaluation.split`).
+- Empty eval loaders are handled safely: `evaluate()` returns
+  `loss=nan` and an empty prediction array instead of raising.
 - Computes summary stats, histograms, and per-condition prediction
   plots.
 - If labels are available, computes:

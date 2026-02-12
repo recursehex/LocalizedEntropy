@@ -140,7 +140,9 @@ def evaluate(
         w = w.to(device, non_blocking=non_blocking, dtype=model_dtype)
         logits = model(x, x_cat, c)
         w_flat = w.view(-1).to(logits.dtype)
-        has_non_unit_weights = bool((w_flat != 1.0).any().item())
+        # Always use the weighted path in evaluation; unit weights are equivalent
+        # and this avoids extra device-side boolean reductions on MPS.
+        batch_denom = float(w_flat.sum().item())
         # Guard against inadvertently running evaluation on CPU when CUDA is expected.
         if (device.type == "cuda") and (not verified_cuda_batch):
             tensors = (x, x_cat, c, y, w, logits)
@@ -160,26 +162,19 @@ def evaluate(
                     torch.as_tensor(condition_weights, device=logits.device, dtype=logits.dtype)
                     if condition_weights is not None else None
                 ),
-                sample_weights=w if has_non_unit_weights else None,
+                sample_weights=w,
             )
-            batch_denom = float(w_flat.sum().item()) if has_non_unit_weights else float(x.size(0))
         elif loss_mode == "bce":
             bce_per = bce_loss(logits, y).view(-1)
-            if has_non_unit_weights:
-                loss = (bce_per * w_flat).sum() / w_flat.sum().clamp_min(1.0)
-                batch_denom = float(w_flat.sum().item())
-            else:
-                loss = bce_per.mean()
-                batch_denom = float(x.size(0))
+            loss = (bce_per * w_flat).sum() / w_flat.sum().clamp_min(1.0)
         elif loss_mode == "focal":
             loss = focal_loss_with_logits(
                 logits=logits,
                 targets=y,
                 alpha=focal_alpha,
                 gamma=focal_gamma,
-                sample_weights=w if has_non_unit_weights else None,
+                sample_weights=w,
             )
-            batch_denom = float(w_flat.sum().item()) if has_non_unit_weights else float(x.size(0))
         else:
             raise ValueError(f"Unsupported loss_mode: {loss_mode}")
         total_loss += float(loss.item()) * batch_denom
