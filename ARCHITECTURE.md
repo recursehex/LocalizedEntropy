@@ -164,6 +164,8 @@ Step-by-step pipeline:
   printing an aligned text table plus a BCE-vs-LE summary (accuracy,
   logloss, brier, ECE, with percent change vs BCE) and a per-condition
   abs(1 - calibration) table for quick closeness-to-1 checks.
+  By default, comparison rows are sorted by per-condition base rate
+  descending (`comparison.sort_by=base_rate`).
 
 10) Optional repeated-run significance testing
 - When `repeats.enabled=true`, the notebook re-trains BCE/LE across
@@ -252,6 +254,8 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
   - ECE, ROC-AUC, PR-AUC.
   - Binary accuracy/F1 metrics and per-condition diagnostics.
   - Per-condition metrics and LE numerator/denominator diagnostics.
+    Per-condition eval metric tables are ordered by base rate descending
+    (highest-to-lowest), with count as a tie-breaker.
   - Per-condition calibration ratios (pred mean / label mean) and helpers
     for LE ratio tables.
 - `localized_entropy/experiments.py`: experiment helpers for building

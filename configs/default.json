@@ -435,7 +435,7 @@
   "comparison": {
     "enabled": true,
     "top_k": 20,
-    "sort_by": "count",
+    "sort_by": "base_rate",
     "print_table": true
   }
 }

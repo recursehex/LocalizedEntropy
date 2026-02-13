@@ -447,6 +447,7 @@ calibration and LE ratio terms.
 - `comparison.enabled`: If true, run the per-condition comparison.
 - `comparison.top_k`: Number of rows to include in the table plot.
 - `comparison.sort_by`: Sort key for the comparison table
-  (`count`, `delta_calibration`, `abs_delta_calibration`,
+  (`base_rate`, `count`, `delta_calibration`, `abs_delta_calibration`,
   `delta_le_ratio`, `abs_delta_le_ratio`).
+  Default is `base_rate` (descending).
 - `comparison.print_table`: Print a tab-separated comparison table.

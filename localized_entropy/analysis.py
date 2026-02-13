@@ -356,7 +356,13 @@ def per_condition_metrics(
                 "ece_small": ece_small,
             }
         )
-    return pd.DataFrame(rows).sort_values("count", ascending=False)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    return df.sort_values(
+        ["base_rate", "count", "condition"],
+        ascending=[False, False, True],
+    ).reset_index(drop=True)
 
 
 def per_condition_calibration(
