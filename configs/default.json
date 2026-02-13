@@ -79,6 +79,74 @@
           "norm": null,
           "dropout": 0.35
         }
+      },
+      "ctr_top10_ads_by_count": {
+        "data": {
+          "source": "ctr"
+        },
+        "ctr": {
+          "filter": {
+            "enabled": true,
+            "mode": "top_k",
+            "col": "C14",
+            "ids": [],
+            "k": 10,
+            "metric": "count",
+            "apply_to_test": true,
+            "cache": {
+              "enabled": true,
+              "train_path": "data/train_filtered_top10_count.csv",
+              "test_path": "data/test_filtered_top10_count.csv",
+              "overwrite": true
+            }
+          }
+        }
+      },
+      "ctr_top50_ads_by_count": {
+        "data": {
+          "source": "ctr"
+        },
+        "ctr": {
+          "filter": {
+            "enabled": true,
+            "mode": "top_k",
+            "col": "C14",
+            "ids": [],
+            "k": 50,
+            "metric": "count",
+            "apply_to_test": true,
+            "cache": {
+              "enabled": true,
+              "train_path": "data/train_filtered_top50_count.csv",
+              "test_path": "data/test_filtered_top50_count.csv",
+              "overwrite": true
+            }
+          }
+        }
+      },
+      "ctr_top200_count_median_mix_30": {
+        "data": {
+          "source": "ctr"
+        },
+        "ctr": {
+          "filter": {
+            "enabled": true,
+            "mode": "top_count_rate_mix",
+            "col": "C14",
+            "ids": [],
+            "preselect_k": 200,
+            "high_k": 10,
+            "middle_k": 10,
+            "low_k": 10,
+            "apply_to_test": true,
+            "cache": {
+              "enabled": true,
+              "train_path": "data/train_filtered_top200_mix30.csv",
+              "test_path": "data/test_filtered_top200_mix30.csv",
+              "overwrite": true
+            }
+          }
+        }
       }
     }
   },

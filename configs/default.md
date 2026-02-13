@@ -34,6 +34,10 @@ Template model definitions included in `configs/default.json`:
 - `small_net`: Smaller MLP + smaller embeddings.
 - `wide_net`: Wider MLP with fewer layers.
 - `large_net`: Wider + deeper MLP with larger embeddings.
+- `ctr_top10_ads_by_count`: Sets `data.source=ctr`; keeps top 10 ads by impression count.
+- `ctr_top50_ads_by_count`: Sets `data.source=ctr`; keeps top 50 ads by impression count.
+- `ctr_top200_count_median_mix_30`: Sets `data.source=ctr`; from the top 200 ads by count,
+  selects 10 high-mean, 10 median-band, and 10 low-mean ads.
 
 ## Settings reference
 
@@ -202,13 +206,17 @@ These settings are used when `data.source` is `ctr`.
 - `ctr.max_conditions`: Cap condition vocab; others map to a single id.
 - `ctr.filter`: Optional filtering block for selecting a subset of values.
   - `ctr.filter.enabled`: Enable filtering (default true if the block is set).
-  - `ctr.filter.mode`: `ids`, `top_k`, `bottom_k`, or `none`.
+  - `ctr.filter.mode`: `ids`, `top_k`, `bottom_k`, `top_count_rate_mix`, or `none`.
   - `ctr.filter.col`: Column to filter (defaults to `condition_col`).
 - `ctr.filter.ids`: List of values to keep (mode `ids`).
 - `ctr.filter.k`: Number of values to keep (top/bottom-k modes).
-- `ctr.filter.metric`: `count` (impressions) or `mean` (click rate).
+- `ctr.filter.metric`: `count` (impressions), `mean` (click rate), or `median`.
 - `ctr.filter.order`: Optional override for sort order (`asc`/`desc`).
 - `ctr.filter.min_count`: Optional min count threshold before ranking.
+- `ctr.filter.preselect_k`: For `top_count_rate_mix`, size of the top-count candidate pool (default 200).
+- `ctr.filter.high_k`: For `top_count_rate_mix`, number of highest-mean ads to keep (default 10).
+- `ctr.filter.middle_k` / `ctr.filter.mid_k`: For `top_count_rate_mix`, number of median-band ads to keep (default 10).
+- `ctr.filter.low_k`: For `top_count_rate_mix`, number of lowest-mean ads to keep (default 10).
 - `ctr.filter.apply_to_test`: Apply the same filter to the test set.
 - `ctr.filter.cache`: Optional on-disk cache for filtered CSVs.
   - `ctr.filter.cache.enabled`: If true, write filtered CSVs before load.
@@ -269,6 +277,22 @@ Example: keep a fixed list of ad ids (mirrors the default config):
       "train_path": "data/train_filtered.csv",
       "test_path": "data/test_filtered.csv"
     }
+  }
+}
+```
+
+Example: top 200 ads by count, then select a 30-ad mixed-rate set
+(10 high-mean, 10 median-band, 10 low-mean):
+
+```json
+"ctr": {
+  "filter": {
+    "mode": "top_count_rate_mix",
+    "col": "C14",
+    "preselect_k": 200,
+    "high_k": 10,
+    "middle_k": 10,
+    "low_k": 10
   }
 }
 ```

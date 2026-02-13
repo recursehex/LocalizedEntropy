@@ -83,6 +83,14 @@ def _normalize_filter_mode(mode: Optional[str]) -> str:
         return "top_k"
     if mode in ("bottom", "bottom_k", "lowest", "least"):
         return "bottom_k"
+    if mode in (
+        "top_count_rate_mix",
+        "count_rate_mix",
+        "count_then_rate_mix",
+        "top200_mix",
+        "mixed_30",
+    ):
+        return "top_count_rate_mix"
     if mode in ("none", "off", "disabled"):
         return "none"
     return mode
@@ -97,6 +105,8 @@ def _normalize_filter_metric(metric: Optional[str]) -> str:
         return "frequency"
     if metric in ("mean", "avg", "rate", "click_rate", "clickrate"):
         return "mean"
+    if metric in ("median", "med", "p50"):
+        return "median"
     print(f"[WARN] Unknown filter metric '{metric}'; defaulting to frequency.")
     return "frequency"
 
@@ -141,13 +151,134 @@ def _coerce_filter_values(values: Optional[List], series: pd.Series) -> List:
     return values
 
 
+def _coerce_positive_int(value: Optional[object]) -> Optional[int]:
+    """Parse a value as a strictly positive integer."""
+    if value is None:
+        return None
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return value
+
+
+def _resolve_filter_mode(filter_cfg: Dict, legacy_filter_top_k: Optional[int]) -> str:
+    """Resolve filter mode from explicit mode or inferred config fields."""
+    mode = _normalize_filter_mode(filter_cfg.get("mode"))
+    if mode:
+        return mode
+    if filter_cfg.get("ids") or filter_cfg.get("values"):
+        return "ids"
+    if filter_cfg.get("k") or filter_cfg.get("top_k") or legacy_filter_top_k:
+        return "top_k"
+    if filter_cfg.get("pool_k") or filter_cfg.get("preselect_k") or filter_cfg.get("candidate_k"):
+        return "top_count_rate_mix"
+    return "none"
+
+
+def _apply_min_count_filter(stats_df: pd.DataFrame, min_count_value: Optional[object]) -> pd.DataFrame:
+    """Apply optional min-count filtering to grouped stats."""
+    min_count = _coerce_positive_int(min_count_value)
+    if min_count is None:
+        return stats_df
+    return stats_df[stats_df["frequency"] >= min_count]
+
+
+def _select_middle_ids(ids: List, k: int) -> List:
+    """Select k IDs centered in the list order."""
+    if k <= 0 or not ids:
+        return []
+    if k >= len(ids):
+        return list(ids)
+    start = max((len(ids) - k) // 2, 0)
+    end = start + k
+    return list(ids[start:end])
+
+
+def _select_top_count_rate_mix(stats_df: pd.DataFrame, filter_cfg: Dict) -> Tuple[List, Optional[pd.DataFrame]]:
+    """Select IDs from a top-count pool using high/mid/low rate buckets."""
+    if stats_df.empty:
+        return [], None
+
+    pool_k = (
+        _coerce_positive_int(filter_cfg.get("pool_k"))
+        or _coerce_positive_int(filter_cfg.get("preselect_k"))
+        or _coerce_positive_int(filter_cfg.get("candidate_k"))
+        or 200
+    )
+    high_k = _coerce_positive_int(filter_cfg.get("high_k")) or 10
+    middle_k = _coerce_positive_int(filter_cfg.get("middle_k")) or _coerce_positive_int(
+        filter_cfg.get("mid_k")
+    ) or 10
+    low_k = _coerce_positive_int(filter_cfg.get("low_k")) or 10
+
+    stats_pool = stats_df.sort_values(
+        ["frequency", "mean", "median"],
+        ascending=[False, False, False],
+    ).head(pool_k)
+    if stats_pool.empty:
+        return [], None
+
+    # Pick high/low by mean rate and pick the middle band by median-ranked ordering.
+    by_mean = stats_pool.sort_values(
+        ["mean", "median", "frequency"],
+        ascending=[False, False, False],
+    )
+    by_median = stats_pool.sort_values(
+        ["median", "mean", "frequency"],
+        ascending=[False, False, False],
+    )
+
+    high_ids = by_mean.head(high_k).index.to_list() if high_k > 0 else []
+    middle_ids = _select_middle_ids(by_median.index.to_list(), middle_k)
+    low_ids = list(reversed(by_mean.tail(low_k).index.to_list())) if low_k > 0 else []
+    selected_ids = dedupe([*high_ids, *middle_ids, *low_ids])
+    if not selected_ids:
+        return [], None
+    selected_stats = stats_pool.reindex(selected_ids)
+    return selected_ids, selected_stats
+
+
+def _select_values_from_stats(
+    stats_df: pd.DataFrame,
+    filter_mode: str,
+    filter_cfg: Dict,
+    legacy_filter_top_k: Optional[int],
+) -> Tuple[List, Optional[pd.DataFrame]]:
+    """Select filter IDs from grouped stats based on configured mode."""
+    if stats_df.empty:
+        return [], None
+    if filter_mode == "top_count_rate_mix":
+        return _select_top_count_rate_mix(stats_df, filter_cfg)
+
+    metric = _normalize_filter_metric(filter_cfg.get("metric"))
+    order_override = _normalize_filter_order(filter_cfg.get("order"))
+    default_ascending = filter_mode == "bottom_k"
+    ascending = order_override if order_override is not None else default_ascending
+    k = _coerce_positive_int(filter_cfg.get("k"))
+    if k is None and filter_mode == "bottom_k":
+        k = _coerce_positive_int(filter_cfg.get("bottom_k"))
+    if k is None:
+        k = _coerce_positive_int(filter_cfg.get("top_k"))
+    if k is None:
+        k = _coerce_positive_int(legacy_filter_top_k)
+    if k is None:
+        return [], None
+    selected_stats = stats_df.sort_values(metric, ascending=ascending).head(k)
+    selected_values = selected_stats.index.to_list()
+    return selected_values, selected_stats
+
+
 def _build_filter_stats(train_df: pd.DataFrame, filter_col: str, label_col: str) -> pd.DataFrame:
-    """Compute frequency/mean/std for a filter column."""
+    """Compute frequency/mean/median/std for a filter column."""
     return (
         train_df.groupby(filter_col)[label_col]
         .agg(
             frequency="size",
             mean="mean",
+            median="median",
             std=lambda s: float(np.std(s.to_numpy(), ddof=0)),
         )
     )
@@ -187,7 +318,7 @@ def _stream_filter_stats(
             counts[idx] = counts.get(idx, 0) + int(row["size"])
             sums[idx] = sums.get(idx, 0.0) + float(row["sum"])
     if not counts:
-        return pd.DataFrame(columns=["frequency", "mean"])
+        return pd.DataFrame(columns=["frequency", "mean", "median"])
     stats_df = pd.DataFrame(
         {
             "frequency": pd.Series(counts, dtype="int64"),
@@ -195,6 +326,12 @@ def _stream_filter_stats(
         }
     )
     stats_df["mean"] = stats_df["sum"] / stats_df["frequency"].replace(0, np.nan)
+    # CTR labels are binary, so the per-group median is derived from sum/frequency.
+    stats_df["median"] = np.where(
+        stats_df["sum"] * 2 > stats_df["frequency"],
+        1.0,
+        np.where(stats_df["sum"] * 2 < stats_df["frequency"], 0.0, 0.5),
+    )
     return stats_df.drop(columns=["sum"])
 
 
@@ -254,14 +391,7 @@ def maybe_cache_filtered_ctr(ctr_cfg: Dict) -> None:
         print("[WARN] Filter cache enabled but filter column is missing.")
         return
 
-    filter_mode = _normalize_filter_mode(filter_cfg.get("mode"))
-    if not filter_mode:
-        if filter_cfg.get("ids") or filter_cfg.get("values"):
-            filter_mode = "ids"
-        elif filter_cfg.get("k") or filter_cfg.get("top_k") or legacy_filter_top_k:
-            filter_mode = "top_k"
-        else:
-            filter_mode = "none"
+    filter_mode = _resolve_filter_mode(filter_cfg, legacy_filter_top_k)
     filter_enabled = filter_cfg.get("enabled")
     if filter_enabled is None:
         filter_enabled = filter_mode not in ("", "none")
@@ -296,39 +426,19 @@ def maybe_cache_filtered_ctr(ctr_cfg: Dict) -> None:
         if stats_df.empty:
             print("[WARN] Filter cache stats are empty; skipping cache.")
             return
-        min_count = filter_cfg.get("min_count")
-        if min_count is not None:
-            try:
-                min_count = int(min_count)
-            except (TypeError, ValueError):
-                min_count = None
-        if min_count is not None and min_count > 0:
-            stats_df = stats_df[stats_df["frequency"] >= min_count]
+        stats_df = _apply_min_count_filter(stats_df, filter_cfg.get("min_count"))
         if stats_df.empty:
             print("[WARN] Filter cache stats empty after min_count; skipping cache.")
             return
-        metric = _normalize_filter_metric(filter_cfg.get("metric"))
-        order_override = _normalize_filter_order(filter_cfg.get("order"))
-        default_ascending = filter_mode == "bottom_k"
-        ascending = order_override if order_override is not None else default_ascending
-        k = filter_cfg.get("k")
-        if k is None and filter_mode == "bottom_k":
-            k = filter_cfg.get("bottom_k")
-        if k is None:
-            k = filter_cfg.get("top_k")
-        if k is None:
-            k = legacy_filter_top_k
-        if k is not None:
-            try:
-                k = int(k)
-            except (TypeError, ValueError):
-                k = None
-        if k is None or k <= 0:
-            print("[WARN] Filter cache enabled but k is missing.")
-            return
-        selected_ids = (
-            stats_df.sort_values(metric, ascending=ascending).head(k).index.to_list()
+        selected_ids, _ = _select_values_from_stats(
+            stats_df=stats_df,
+            filter_mode=filter_mode,
+            filter_cfg=filter_cfg,
+            legacy_filter_top_k=legacy_filter_top_k,
         )
+        if not selected_ids:
+            print("[WARN] Filter cache enabled but selection returned no ids.")
+            return
 
     selected_ids = dedupe(selected_ids)
     if not selected_ids:
@@ -430,14 +540,7 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
     if filter_col is None and filter_cfg:
         filter_col = condition_col
 
-    filter_mode = _normalize_filter_mode(filter_cfg.get("mode"))
-    if not filter_mode:
-        if filter_cfg.get("ids") or filter_cfg.get("values"):
-            filter_mode = "ids"
-        elif filter_cfg.get("k") or filter_cfg.get("top_k") or legacy_filter_top_k:
-            filter_mode = "top_k"
-        else:
-            filter_mode = "none"
+    filter_mode = _resolve_filter_mode(filter_cfg, legacy_filter_top_k)
 
     filter_enabled = filter_cfg.get("enabled")
     if filter_enabled is None:
@@ -494,44 +597,19 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
             ids = filter_cfg.get("ids") or filter_cfg.get("values") or []
             selected_values = _coerce_filter_values(ids, train_df[filter_col])
         else:
-            metric = _normalize_filter_metric(filter_cfg.get("metric"))
-            min_count = filter_cfg.get("min_count")
-            if min_count is not None:
-                try:
-                    min_count = int(min_count)
-                except (TypeError, ValueError):
-                    min_count = None
-            order_override = _normalize_filter_order(filter_cfg.get("order"))
-            if filter_mode == "bottom_k":
-                default_ascending = True
+            stats_all = _build_filter_stats(train_df, filter_col, label_col)
+            stats_all = _apply_min_count_filter(stats_all, filter_cfg.get("min_count"))
+            if stats_all.empty:
+                print("[WARN] Filter stats are empty; skipping filter.")
             else:
-                default_ascending = False
-            ascending = order_override if order_override is not None else default_ascending
-            k = filter_cfg.get("k")
-            if k is None:
-                if filter_mode == "bottom_k":
-                    k = filter_cfg.get("bottom_k")
-            if k is None:
-                k = filter_cfg.get("top_k")
-            if k is None:
-                k = legacy_filter_top_k
-            if k is not None:
-                try:
-                    k = int(k)
-                except (TypeError, ValueError):
-                    k = None
-            if k is None or k <= 0:
-                print("[WARN] Filter configured but k is missing; skipping filter.")
-            else:
-                stats_all = _build_filter_stats(train_df, filter_col, label_col)
-                if min_count is not None and min_count > 0:
-                    stats_all = stats_all[stats_all["frequency"] >= min_count]
-                if stats_all.empty:
-                    print("[WARN] Filter stats are empty; skipping filter.")
-                else:
-                    stats_sorted = stats_all.sort_values(metric, ascending=ascending)
-                    selected_stats = stats_sorted.head(k)
-                    selected_values = selected_stats.index.to_list()
+                selected_values, selected_stats = _select_values_from_stats(
+                    stats_df=stats_all,
+                    filter_mode=filter_mode,
+                    filter_cfg=filter_cfg,
+                    legacy_filter_top_k=legacy_filter_top_k,
+                )
+                if not selected_values:
+                    print("[WARN] Filter configured but selection returned no values; skipping filter.")
 
         selected_values = dedupe(selected_values)
         if selected_values:

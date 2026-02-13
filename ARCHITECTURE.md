@@ -28,7 +28,9 @@ Step-by-step pipeline:
 2) Optional CTR filtering + caching (config-driven)
 - `localized_entropy/data/ctr.py` applies `ctr.filter` (or legacy
   `ctr.filter_col`/`ctr.filter_top_k`) to select a subset of conditions
-  by id list or by top/bottom-k ranking on impressions or click rate.
+  by id list, by top/bottom-k ranking on impressions/click-rate stats,
+  or by a mixed-rate profile (`top_count_rate_mix`: top-count pool with
+  high/mid/low rate picks).
 - If `ctr.filter.cache.enabled` is true, the pipeline writes filtered
   CSVs to disk before loading, reducing memory pressure for large
   datasets.
@@ -199,7 +201,11 @@ CTR source (`localized_entropy/data/ctr.py`):
   - `device_counters`: add capped counts for device_ip/device_id.
 - Optional filtering:
   - Uses `ctr.filter` (or legacy `filter_col`/`filter_top_k`) to keep
-    specific condition ids or top/bottom-k by impressions/click rate.
+    specific condition ids, top/bottom-k by impressions/click rate, or
+    a mixed subset from a top-count candidate pool
+    (`top_count_rate_mix`).
+  - The mixed subset mode first keeps top ads by count, then selects
+    high-mean, median-band, and low-mean click-rate groups.
   - Optionally applies the same filter to the test set.
 - Encodes:
   - Condition column into integer IDs (with optional top-k mapping).

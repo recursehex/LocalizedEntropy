@@ -19,6 +19,14 @@ def _normalize_filter_mode(mode: Optional[str]) -> str:
         return "top_k"
     if text in ("bottom", "bottom_k", "lowest", "least"):
         return "bottom_k"
+    if text in (
+        "top_count_rate_mix",
+        "count_rate_mix",
+        "count_then_rate_mix",
+        "top200_mix",
+        "mixed_30",
+    ):
+        return "top_count_rate_mix"
     if text in ("none", "off", "disabled"):
         return "none"
     return text
@@ -59,6 +67,8 @@ def resolve_filter_mode(cfg: Dict) -> str:
     if not mode:
         if filter_cfg.get("ids") or filter_cfg.get("values"):
             mode = "ids"
+        elif filter_cfg.get("pool_k") or filter_cfg.get("preselect_k") or filter_cfg.get("candidate_k"):
+            mode = "top_count_rate_mix"
         elif filter_cfg.get("k") or filter_cfg.get("top_k") or ctr_cfg.get("filter_top_k"):
             mode = "top_k"
         else:
@@ -69,7 +79,7 @@ def resolve_filter_mode(cfg: Dict) -> str:
         filter_enabled = mode not in ("", "none")
     if not filter_enabled:
         mode = "none"
-    if mode not in {"ids", "top_k", "bottom_k"}:
+    if mode not in {"ids", "top_k", "bottom_k", "top_count_rate_mix"}:
         mode = "ids"
     return mode
 
