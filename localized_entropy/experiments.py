@@ -333,6 +333,7 @@ def run_repeated_loss_experiments(
 
     eval_has_labels = eval_labels is not None
     data_source = get_data_source(cfg)
+    deterministic = bool(cfg.get("device", {}).get("deterministic", False))
     per_loss = {}
     for loss_mode in loss_modes:
         loss_loaders, loss_train_cfg = build_loss_loaders(cfg, loss_mode, splits, device, use_cuda, use_mps)
@@ -363,7 +364,7 @@ def run_repeated_loss_experiments(
     results: Dict[str, List[TrainRunResult]] = {loss_mode: [] for loss_mode in loss_modes}
     for seed in seeds:
         for loss_mode in loss_modes:
-            set_seed(int(seed), use_cuda)
+            set_seed(int(seed), use_cuda, deterministic=deterministic)
             model = build_model(cfg, splits, device, dtype=model_dtype)
             loss_bundle = per_loss[loss_mode]
             train_cfg = loss_bundle["train_cfg"]

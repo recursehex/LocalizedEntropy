@@ -133,6 +133,13 @@ def build_dataloaders(
     else:
         batch_size = int(batch_size)
     move_dataset_to_cuda = bool(cfg["device"]["move_dataset_to_cuda"])
+    tensor_loader_shuffle_on_cpu = bool(cfg["device"].get("tensor_loader_shuffle_on_cpu", True))
+    tensor_loader_deterministic_shuffle = bool(
+        cfg["device"].get("tensor_loader_deterministic_shuffle", True)
+    )
+    tensor_loader_shuffle_seed = None
+    if tensor_loader_deterministic_shuffle:
+        tensor_loader_shuffle_seed = int(cfg.get("project", {}).get("seed", 0))
     allow_dataloader_workers = cfg["device"].get("allow_dataloader_workers")
     env_var = cfg["device"].get("num_workers_env", "LOCALIZED_ENTROPY_NUM_WORKERS")
 
@@ -156,7 +163,13 @@ def build_dataloaders(
             torch.as_tensor(splits.y_eval, dtype=torch.float32, device=device),
             torch.as_tensor(splits.w_eval, dtype=torch.float32, device=device),
         )
-        train_loader = TensorBatchLoader(train_tensors, batch_size=batch_size, shuffle=True)
+        train_loader = TensorBatchLoader(
+            train_tensors,
+            batch_size=batch_size,
+            shuffle=True,
+            shuffle_seed=tensor_loader_shuffle_seed,
+            shuffle_on_cpu=tensor_loader_shuffle_on_cpu,
+        )
         eval_loader = TensorBatchLoader(eval_tensors, batch_size=batch_size, shuffle=False)
         test_loader = None
         if splits.x_test is not None:
@@ -171,6 +184,11 @@ def build_dataloaders(
         loader_note = (
             f"TensorBatchLoader on {device_label} (batches per epoch: {len(train_loader)} / {len(eval_loader)})."
         )
+        if tensor_loader_deterministic_shuffle:
+            loader_note += (
+                " | deterministic shuffle enabled"
+                f" (seed={tensor_loader_shuffle_seed}, cpu_perm={tensor_loader_shuffle_on_cpu})"
+            )
         if test_loader is not None:
             loader_note += f" | Test batches: {len(test_loader)}"
         return LoaderBundle(train_loader, eval_loader, test_loader, loader_note)

@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
+from localized_entropy.data.datasets import TensorBatchLoader
 from localized_entropy.training import evaluate, train_with_epoch_plots
 
 
@@ -149,3 +150,44 @@ def test_evaluate_empty_loader_returns_nan_and_empty_predictions():
     assert np.isnan(eval_loss)
     assert preds.dtype == np.float32
     assert preds.shape == (0,)
+
+
+def test_tensor_batch_loader_deterministic_cpu_shuffle_reproducible():
+    """TensorBatchLoader should produce reproducible shuffles with a fixed seed."""
+    x = torch.arange(12, dtype=torch.float32).view(-1, 1)
+    x_cat = torch.zeros((12, 0), dtype=torch.long)
+    c = torch.zeros(12, dtype=torch.long)
+    y = torch.zeros(12, dtype=torch.float32)
+    w = torch.ones(12, dtype=torch.float32)
+    tensors = (x, x_cat, c, y, w)
+
+    loader_a = TensorBatchLoader(
+        tensors,
+        batch_size=4,
+        shuffle=True,
+        shuffle_seed=123,
+        shuffle_on_cpu=True,
+    )
+    loader_b = TensorBatchLoader(
+        tensors,
+        batch_size=4,
+        shuffle=True,
+        shuffle_seed=123,
+        shuffle_on_cpu=True,
+    )
+
+    def _epoch_order(loader):
+        order = []
+        for batch in loader:
+            xb = batch[0].view(-1).to(torch.long)
+            order.extend(xb.tolist())
+        return order
+
+    a_epoch1 = _epoch_order(loader_a)
+    a_epoch2 = _epoch_order(loader_a)
+    b_epoch1 = _epoch_order(loader_b)
+    b_epoch2 = _epoch_order(loader_b)
+
+    assert a_epoch1 == b_epoch1
+    assert a_epoch2 == b_epoch2
+    assert a_epoch1 != a_epoch2

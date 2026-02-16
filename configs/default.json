@@ -190,6 +190,7 @@
             "epochs": 5,
             "lr": 0.001,
             "lr_category": null,
+            "lr_zero_after_epochs": null,
             "batch_size": 25000,
             "eval_every_n_batches": 0
           }
@@ -211,10 +212,8 @@
           },
           "synthetic": {
             "epochs": 5,
-            "lr": 0.006,
-            "lr_category": null,
-            "lr_zero_after_epochs": 2,
-            "batch_size": 25000,
+            "lr": 0.04,
+            "batch_size": 50000,
             "eval_every_n_batches": 0,
             "cross_batch": {
               "enabled": true,

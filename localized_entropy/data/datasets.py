@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 from torch.utils.data import Dataset
@@ -55,6 +55,8 @@ class TensorBatchLoader:
         tensors: Tuple[torch.Tensor, ...],
         batch_size: int,
         shuffle: bool,
+        shuffle_seed: Optional[int] = None,
+        shuffle_on_cpu: bool = False,
     ):
         """Batch tensors already staged on a device."""
         assert len(tensors) > 0
@@ -66,6 +68,12 @@ class TensorBatchLoader:
         self.shuffle = shuffle
         self.length = n
         self.device = tensors[0].device
+        self.shuffle_on_cpu = bool(shuffle_on_cpu)
+        self._cpu_generator: Optional[torch.Generator] = None
+        if shuffle_seed is not None:
+            gen = torch.Generator(device="cpu")
+            gen.manual_seed(int(shuffle_seed))
+            self._cpu_generator = gen
 
     def __len__(self) -> int:
         """Return the number of batches per epoch."""
@@ -81,7 +89,23 @@ class TensorBatchLoader:
         # Build indices on the same device as tensors to avoid host/device sync.
         indices = torch.arange(self.length, device=self.device, dtype=torch.long)
         if self.shuffle:
-            indices = indices[torch.randperm(self.length, device=self.device)]
+            # For cross-backend reproducibility, optionally build permutation on CPU.
+            use_cpu_perm = self.shuffle_on_cpu or (self._cpu_generator is not None)
+            if use_cpu_perm:
+                perm_cpu = torch.randperm(
+                    self.length,
+                    generator=self._cpu_generator,
+                    device="cpu",
+                )
+                if self.device.type == "cpu":
+                    indices = perm_cpu
+                else:
+                    indices = perm_cpu.to(
+                        self.device,
+                        non_blocking=(self.device.type == "cuda"),
+                    )
+            else:
+                indices = indices[torch.randperm(self.length, device=self.device)]
         for start in range(0, self.length, self.batch_size):
             batch_idx = indices[start:start + self.batch_size]
             yield tuple(t.index_select(0, batch_idx) for t in self.tensors)

@@ -304,6 +304,11 @@ def train_with_epoch_plots(
         base_lr_zero_after = int(lr_zero_after_epochs)
         if base_lr_zero_after < 0:
             raise ValueError("lr_zero_after_epochs must be >= 0.")
+        if category_lr is None:
+            print(
+                "[WARN] lr_zero_after_epochs is set while category_lr is unset; "
+                "this will zero the learning rate for the entire model."
+            )
     if loss_mode == "localized_entropy":
         loss_label = "LE"
     elif loss_mode == "bce":

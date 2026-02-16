@@ -24,6 +24,12 @@ Step-by-step pipeline:
 - Chooses CUDA vs MPS vs CPU via `localized_entropy/utils.py` and
   `device.use_mps` in the config; when MPS is explicitly disabled, the
   notebook builds models with float64 on CPU.
+- Determinism is controlled by `device.deterministic`:
+  - Enables `torch.use_deterministic_algorithms(...)`.
+  - Sets CuDNN deterministic mode and disables CuDNN benchmark.
+  - Disables TF32 matmul paths on CUDA when available.
+- Notebook seed setup now passes this deterministic flag into both
+  device initialization and `set_seed(...)`.
 
 2) Optional CTR filtering + caching (config-driven)
 - `localized_entropy/data/ctr.py` applies `ctr.filter` (or legacy
@@ -58,6 +64,12 @@ Step-by-step pipeline:
 - Dataloaders:
   - If a GPU backend is available (CUDA or MPS) and `device.move_dataset_to_cuda=true`,
     `TensorBatchLoader` is used to stage tensors on the accelerator.
+    - Deterministic tensor shuffling is configurable:
+      - `device.tensor_loader_deterministic_shuffle=true` uses a seed-based
+        CPU RNG stream for reproducible epoch permutations.
+      - `device.tensor_loader_shuffle_on_cpu=true` builds permutations on CPU
+        before moving indices to accelerator memory, reducing backend-specific
+        RNG differences between CUDA and MPS.
   - Otherwise, standard PyTorch `DataLoader` is used with a
     worker fallback strategy (CUDA keeps workers at 0 by default for stability).
   - Batches include per-sample weights (all ones unless DEPRECATED synthetic reweighting is enabled).
@@ -107,6 +119,9 @@ Step-by-step pipeline:
   for the condition embedding table (`training.lr_category`, alias
   `LRCategory`) and optionally zero out the base learning rate after
   `training.lr_zero_after_epochs`.
+  - If `lr_zero_after_epochs` is set while `lr_category` is unset,
+    the whole model optimizer is effectively frozen after that epoch.
+    The training loop now logs a warning for this case.
 - For LE, per-condition base rates are computed once from the training data
   and reused as fixed normalization factors during training (streaming
   base rates are only used as a fallback when precomputed rates are absent).
@@ -117,6 +132,10 @@ Step-by-step pipeline:
   `training.by_loss.localized_entropy.by_source.<source>.cross_batch.amplification_rate`)
   to stabilize both numerator CE sums and denominator label-count statistics
   across batches.
+  - This cross-batch path is explicitly order-sensitive because each batch
+    updates history buffers that affect subsequent class terms.
+  - For higher cross-hardware consistency in synthetic runs, the default
+    config now disables LE cross-batch history unless explicitly re-enabled.
 - Optional mid-epoch eval callbacks can plot prediction histograms.
 - When `training.eval_every_n_batches > 0`, train/eval loss is tracked by
   batch for additional diagnostics in the loss curve plot.

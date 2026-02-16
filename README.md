@@ -25,6 +25,8 @@ This repository implements and evaluates Localized Entropy (LE), a normalized cr
 Python 3.10+ with:
 - `numpy`, `pandas`, `matplotlib`, `scipy`, `torch`
 
+If you are using an NVIDIA RTX 50-series GPU (for example, RTX 5090), install PyTorch using `torch.md` so you get a CUDA 12.8+ wheel compatible with `sm_120`.
+
 ## How to run
 1. Open `localized_entropy.ipynb`.
 2. Make sure `configs/default.json` points at your data files and the experiment you want.
@@ -92,4 +94,8 @@ These outputs support the capstone evaluation criteria in my contract (software 
 
 ## Reproducibility
 - Fixed random seeds (NumPy + PyTorch) are set in the notebook.
+- Deterministic mode is configurable via `device.deterministic`.
+- Accelerator tensor-loader shuffle consistency is configurable via
+  `device.tensor_loader_deterministic_shuffle` and
+  `device.tensor_loader_shuffle_on_cpu`.
 - All experiment settings are in `configs/default.json`.

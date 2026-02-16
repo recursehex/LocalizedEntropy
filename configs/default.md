@@ -52,8 +52,15 @@ Template model definitions included in `configs/default.json`:
 ### device
 - `device.use_mps`: If true and MPS is available, use Apple Silicon GPU (with float32);
   set to false to force CPU (the notebook then builds models in float64).
+- `device.deterministic`: If true, enable deterministic PyTorch behavior
+  (`torch.use_deterministic_algorithms`, CuDNN deterministic mode, and TF32 off on CUDA).
 - `device.move_dataset_to_cuda`: If true and CUDA is available, stage
   datasets on GPU and use `TensorBatchLoader`.
+- `device.tensor_loader_deterministic_shuffle`: If true, `TensorBatchLoader`
+  shuffles with a fixed, seed-driven RNG for cross-run reproducibility.
+- `device.tensor_loader_shuffle_on_cpu`: If true, generate `TensorBatchLoader`
+  permutations on CPU before moving indices to accelerator tensors. This
+  improves CUDA-vs-MPS consistency.
 - `device.allow_dataloader_workers`: If true, allow multiprocessing
   DataLoader workers (false in notebooks by default).
 - `device.num_workers_env`: Env var name used to override worker count.
@@ -66,6 +73,8 @@ Template model definitions included in `configs/default.json`:
   in JSON configs.
 - `training.lr_zero_after_epochs`: Optional epoch count after which the
   base learning rate is set to 0.
+  - If `training.lr_category` is unset, this zeros the only optimizer group
+    and freezes the whole model.
 - `training.batch_size`: Train/eval batch size.
 - `training.loss_mode`: `localized_entropy`, `bce`, `focal`, `both` (train
   BCE + LE sequentially), `all` (train BCE + LE + focal sequentially), or
@@ -152,11 +161,11 @@ Example:
         "synthetic": {
           "epochs": 8,
           "batch_size": 25000,
-          "lr": 0.006,
+          "lr": 0.003,
           "lr_category": null,
-          "lr_zero_after_epochs": 2,
+          "lr_zero_after_epochs": null,
           "cross_batch": {
-            "enabled": true,
+            "enabled": false,
             "amplification_rate": 1.35
           }
         }
