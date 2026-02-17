@@ -61,6 +61,10 @@ Template model definitions included in `configs/default.json`:
 ### training
 - `training.epochs`: Number of training epochs.
 - `training.lr`: Adam learning rate.
+- `training.lr_decay`: Multiplicative per-batch learning-rate decay
+  factor applied after each optimizer step (`1.0` disables decay).
+- `training.lr_category_decay`: Multiplicative per-batch decay factor
+  for `training.lr_category` groups only (`1.0` disables decay).
 - `training.lr_category`: Optional learning rate applied only to the
   condition embedding table. Accepts `LRCategory` as an alias
   in JSON configs.
