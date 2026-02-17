@@ -131,6 +131,13 @@ def default_le_train_params(ctx: SearchContext) -> Dict[str, Any]:
         "epochs": int(le_train_cfg.get("epochs", ctx.cfg["training"]["epochs"])),
         "lr": float(le_train_cfg.get("lr", ctx.cfg["training"]["lr"])),
         "lr_category": resolve_lr_category(le_train_cfg),
+        "lr_decay": float(le_train_cfg.get("lr_decay", ctx.cfg.get("training", {}).get("lr_decay", 1.0))),
+        "lr_category_decay": float(
+            le_train_cfg.get(
+                "lr_category_decay",
+                ctx.cfg.get("training", {}).get("lr_category_decay", 1.0),
+            )
+        ),
         "lr_zero_after_epochs": le_train_cfg.get("lr_zero_after_epochs"),
         "le_cross_batch_cfg": copy.deepcopy(le_train_cfg.get("cross_batch"))
         if isinstance(le_train_cfg.get("cross_batch"), dict)
@@ -214,6 +221,8 @@ def run_le_hyper_search(
             epochs=train_params["epochs"],
             lr=train_params["lr"],
             lr_category=None if train_params["lr_category"] is None else float(train_params["lr_category"]),
+            lr_decay=float(train_params["lr_decay"]),
+            lr_category_decay=float(train_params["lr_category_decay"]),
             lr_zero_after_epochs=train_params["lr_zero_after_epochs"],
             eval_has_labels=True,
             le_base_rates_train=ctx.base_rates_train,

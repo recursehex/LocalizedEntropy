@@ -211,10 +211,10 @@
             }
           },
           "synthetic": {
-            "epochs": 20,
+            "epochs": 5,
             "lr": 0.001,
             "lr_category": 0.001,
-            "lr_zero_after_epochs": 10,
+            "lr_zero_after_epochs": null,
             "batch_size": 25000,
             "eval_every_n_batches": 0,
             "cross_batch": {
