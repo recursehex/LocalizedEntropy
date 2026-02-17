@@ -159,6 +159,8 @@
   "training": {
     "epochs": 3,
     "lr": 0.001,
+    "lr_decay": 0.999,
+    "lr_category_decay": 0.9999,
     "lr_category": null,
     "lr_zero_after_epochs": null,
     "batch_size": 25000,
@@ -212,13 +214,13 @@
           "synthetic": {
             "epochs": 5,
             "lr": 0.006,
-            "lr_category": null,
-            "lr_zero_after_epochs": 2,
+            "lr_category": 0.01,
+            "lr_zero_after_epochs": null,
             "batch_size": 25000,
             "eval_every_n_batches": 0,
             "cross_batch": {
               "enabled": true,
-              "amplification_rate": 1.35
+              "amplification_rate": 20
             }
           }
         }
