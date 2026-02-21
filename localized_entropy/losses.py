@@ -116,11 +116,19 @@ def focal_loss_with_logits(
 class CrossBatchHistory:
     """Track recent examples per condition with a moving window."""
 
-    def __init__(self, amplification_rate: float, eps: float = 1e-12):
+    def __init__(
+        self,
+        amplification_rate: float,
+        eps: float = 1e-12,
+        include_numerator: bool = True,
+    ):
         if amplification_rate <= 0:
             raise ValueError("amplification_rate must be > 0 for cross-batch history.")
         self.amplification_rate = float(amplification_rate)
         self.eps = float(eps)
+        # When enabled, carry model-dependent CE numerator sums across batches.
+        # This can amplify backend-specific numeric drift.
+        self.include_numerator = bool(include_numerator)
         self._buffers: Dict[int, deque] = {}
         self._capacity: Dict[int, int] = {}
         self._count_pos: Dict[int, int] = {}
@@ -193,28 +201,41 @@ class CrossBatchHistory:
     ) -> None:
         """Update history buffers using a batch of conditions/labels and CE numerators."""
         c = conditions.view(-1).detach().cpu().numpy()
+        if c.size == 0:
+            return
         y = targets.view(-1).detach().cpu().numpy()
-        w = None
-        if sample_weights is not None:
-            w = sample_weights.view(-1).detach().cpu().numpy()
-        num_np = None
-        if num_values is not None:
-            num_np = num_values.view(-1).detach().cpu().numpy()
+        w = (
+            sample_weights.view(-1).detach().cpu().numpy()
+            if sample_weights is not None
+            else None
+        )
+        num_np = (
+            num_values.view(-1).detach().cpu().numpy()
+            if num_values is not None
+            else None
+        )
+        base_rates_np = base_rates.detach().cpu().numpy() if base_rates is not None else None
 
-        base_rates_np = None
-        if base_rates is not None:
-            base_rates_np = base_rates.detach().cpu().numpy()
+        unique_cids = np.unique(c)
+        for cid_raw in unique_cids:
+            cid = int(cid_raw)
+            idx = np.flatnonzero(c == cid)
+            if idx.size == 0:
+                continue
+            labels = (y[idx] >= 0.5)
+            if w is None:
+                w_c = np.ones((idx.size,), dtype=np.float64)
+            else:
+                w_c = np.asarray(w[idx], dtype=np.float64)
+            if num_np is None:
+                num_c = np.zeros((idx.size,), dtype=np.float64)
+            else:
+                num_c = np.asarray(num_np[idx], dtype=np.float64)
+                num_c = np.where(np.isfinite(num_c), num_c, 0.0)
 
-        batch_weight_sums: Dict[int, Dict[int, float]] = {}
-        for idx in range(c.shape[0]):
-            cid = int(c[idx])
-            label = 1 if float(y[idx]) >= 0.5 else 0
-            weight = float(w[idx]) if w is not None else 1.0
-            if cid not in batch_weight_sums:
-                batch_weight_sums[cid] = {0: 0.0, 1: 0.0}
-            batch_weight_sums[cid][label] += weight
+            ones_batch = float(w_c[labels].sum())
+            zeros_batch = float(w_c[~labels].sum())
 
-        for cid, counts in batch_weight_sums.items():
             base_rate = None
             if base_rates_np is not None and 0 <= cid < base_rates_np.shape[0]:
                 candidate = float(base_rates_np[cid])
@@ -228,20 +249,60 @@ class CrossBatchHistory:
                 if total_hist > 0:
                     base_rate = ones_hist / total_hist
                 else:
-                    total_batch = counts[0] + counts[1]
-                    base_rate = (counts[1] / total_batch) if total_batch > 0 else 0.5
+                    total_batch = zeros_batch + ones_batch
+                    base_rate = (ones_batch / total_batch) if total_batch > 0 else 0.5
 
             capacity = self._capacity_for_condition(base_rate)
             self._set_capacity(cid, capacity)
+            self._ensure_condition(cid)
+            buf = self._buffers[cid]
 
-        for idx in range(c.shape[0]):
-            cid = int(c[idx])
-            label = 1 if float(y[idx]) >= 0.5 else 0
-            weight = float(w[idx]) if w is not None else 1.0
-            num_value = float(num_np[idx]) if num_np is not None else 0.0
-            if not math.isfinite(num_value):
-                num_value = 0.0
-            self._append(cid, label, weight, num_value)
+            # Keep exact moving-window semantics while minimizing Python-level work.
+            labels_i = labels.astype(np.int8, copy=False)
+            if labels_i.size >= capacity:
+                while buf:
+                    old_label, old_weight, old_num = buf.popleft()
+                    if old_label == 1:
+                        self._count_pos[cid] -= 1
+                        self._sum_pos[cid] -= float(old_weight)
+                    else:
+                        self._count_neg[cid] -= 1
+                        self._sum_neg[cid] -= float(old_weight)
+                    self._sum_num[cid] -= float(old_num)
+                labels_i = labels_i[-capacity:]
+                w_c = w_c[-capacity:]
+                num_c = num_c[-capacity:]
+            else:
+                overflow = max(0, (len(buf) + labels_i.size) - capacity)
+                for _ in range(overflow):
+                    old_label, old_weight, old_num = buf.popleft()
+                    if old_label == 1:
+                        self._count_pos[cid] -= 1
+                        self._sum_pos[cid] -= float(old_weight)
+                    else:
+                        self._count_neg[cid] -= 1
+                        self._sum_neg[cid] -= float(old_weight)
+                    self._sum_num[cid] -= float(old_num)
+
+            entries = list(
+                zip(
+                    labels_i.tolist(),
+                    w_c.tolist(),
+                    num_c.tolist(),
+                )
+            )
+            if entries:
+                buf.extend(entries)
+                pos_mask = labels_i == 1
+                pos_count = int(pos_mask.sum())
+                neg_count = int(labels_i.size - pos_count)
+                self._count_pos[cid] += pos_count
+                self._count_neg[cid] += neg_count
+                if pos_count > 0:
+                    self._sum_pos[cid] += float(w_c[pos_mask].sum())
+                if neg_count > 0:
+                    self._sum_neg[cid] += float(w_c[~pos_mask].sum())
+                self._sum_num[cid] += float(num_c.sum())
 
     def stats(self, condition_id: int) -> Optional[Tuple[int, int, int, int, float, float, float]]:
         """Return (capacity, kept_total, count_pos, count_neg, sum_pos, sum_neg, sum_num)."""
@@ -382,7 +443,8 @@ def localized_entropy(
                 capacity, kept_total, count_pos, count_neg, sum_pos, sum_neg, sum_num = hist_stats
                 ones = ones + z.new_tensor(sum_pos)
                 zeros = zeros + z.new_tensor(sum_neg)
-                num = num + z.new_tensor(sum_num)
+                if cross_batch_history.include_numerator:
+                    num = num + z.new_tensor(sum_num)
                 if debug:
                     total_hist = sum_pos + sum_neg
                     rate_hist = (sum_pos / total_hist) if total_hist > 0 else float("nan")
@@ -392,6 +454,7 @@ def localized_entropy(
                         f"n={capacity} "
                         f"kept_total={kept_total} "
                         f"kept_pos={count_pos} kept_neg={count_neg} "
+                        f"include_numerator={cross_batch_history.include_numerator} "
                         f"sum_num={sum_num:.6g} "
                         f"label1_rate={rate_hist:.6g}"
                     )

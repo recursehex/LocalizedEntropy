@@ -152,7 +152,10 @@
   },
   "device": {
     "use_mps": true,
+    "deterministic": false,
     "move_dataset_to_cuda": true,
+    "tensor_loader_deterministic_shuffle": true,
+    "tensor_loader_shuffle_on_cpu": false,
     "allow_dataloader_workers": false,
     "num_workers_env": "LOCALIZED_ENTROPY_NUM_WORKERS"
   },
@@ -170,7 +173,7 @@
     "eval_every_n_batches": 0,
     "debug_gradients": false,
     "debug_le_inputs": false,
-    "print_embedding_table": true,
+    "print_embedding_table": false,
     "eval_compare_losses": [
       "localized_entropy",
       "bce"
@@ -207,7 +210,8 @@
             "eval_every_n_batches": 0,
             "cross_batch": {
               "enabled": false,
-              "amplification_rate": 0.35
+              "amplification_rate": 0.35,
+              "include_numerator": false
             }
           },
           "synthetic": {
@@ -215,9 +219,15 @@
             "lr": 0.04,
             "batch_size": 50000,
             "eval_every_n_batches": 0,
+            "best_checkpoint": {
+              "restore": true,
+              "metric": "ece_small",
+              "min_epoch": 2
+            },
             "cross_batch": {
               "enabled": true,
-              "amplification_rate": 1.35
+              "amplification_rate": 1.35,
+              "include_numerator": true
             }
           }
         }
@@ -395,7 +405,7 @@
       0
     ],
     "le_stats": true,
-    "grad_sq_by_condition": true,
+    "grad_sq_by_condition": false,
     "grad_sq_top_k": 0,
     "grad_sq_log10": true,
     "print_eval_summary": true,
@@ -421,7 +431,7 @@
     "small_prob_quantile": 0.1
   },
   "repeats": {
-    "enabled": false,
+    "enabled": true,
     "num_runs": 10,
     "seed_stride": 1,
     "include_base_run": true,

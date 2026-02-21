@@ -19,6 +19,7 @@ def _density_lines(
     title: str = "",
     x_label: str = "",
     density: bool = True,
+    smooth_window: int = 0,
     output_path: Optional[Union[str, Path]] = None,
 ) -> None:
     """Plot per-condition density or count lines for a feature array."""
@@ -44,6 +45,12 @@ def _density_lines(
             continue
         vv = vals[m]
         hist, _ = np.histogram(vv, bins=edges, density=density)
+        if int(smooth_window) > 1:
+            win = int(smooth_window)
+            if (win % 2) == 0:
+                win += 1
+            kernel = np.ones(win, dtype=np.float64) / float(win)
+            hist = np.convolve(hist, kernel, mode="same")
         plt.plot(centers, hist, label=f"Condition {cond}")
     plt.title(title)
     plt.xlabel(x_label)
@@ -178,6 +185,8 @@ def plot_eval_predictions_by_condition(
     title: Optional[str] = None,
     print_counts: bool = True,
     value_range: Tuple[float, float] = (-12, 0),
+    bins: int = 80,
+    smooth_window: int = 9,
     output_path: Optional[Union[str, Path]] = None,
 ) -> None:
     """Plot per-condition prediction distributions."""
@@ -197,11 +206,12 @@ def plot_eval_predictions_by_condition(
         values=preds,
         groups=conds,
         num_conditions=num_conditions,
-        bins=120,
+        bins=int(bins),
         transform="log10",
         value_range=value_range,
         title=title,
         x_label="log10(pred p)",
+        smooth_window=int(smooth_window),
         output_path=output_path,
     )
 

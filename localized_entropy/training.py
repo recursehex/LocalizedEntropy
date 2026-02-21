@@ -17,6 +17,17 @@ def _resolve_model_dtype(model: nn.Module, default: torch.dtype = torch.float32)
     return first_param.dtype if first_param is not None else default
 
 
+def _ensure_contiguous_parameters(model: nn.Module) -> List[str]:
+    """Force parameter storage to be contiguous and return patched parameter names."""
+    patched: List[str] = []
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            if not param.data.is_contiguous():
+                param.data = param.data.contiguous()
+                patched.append(name)
+    return patched
+
+
 @dataclass
 class GradSqStats:
     """Per-condition and per-class gradient mean-square stats."""
@@ -273,9 +284,23 @@ def train_with_epoch_plots(
     debug_gradients: bool = False,
     debug_le_inputs: bool = False,
     le_cross_batch_cfg: Optional[dict] = None,
+    le_bce_anchor_lambda: float = 0.0,
     print_embedding_table: bool = False,
 ) -> Tuple[List[float], List[float], Optional[GradSqStats], List[dict]]:
     """Train a model while optionally collecting plots and diagnostics."""
+    patched_params = _ensure_contiguous_parameters(model)
+    if patched_params:
+        names = ", ".join(patched_params)
+        print(
+            "[INFO] Repacked non-contiguous model parameters before optimizer init: "
+            f"{names}"
+        )
+
+    adam_kwargs = {}
+    if device.type == "mps":
+        # Avoid backend-specific foreach optimizer kernels on MPS.
+        adam_kwargs["foreach"] = False
+
     base_lr_group_indices = [0]
     if category_lr is not None:
         emb_layer = getattr(model, "embedding", None)
@@ -289,11 +314,11 @@ def train_with_epoch_plots(
                 param_groups.append({"params": base_params, "lr": lr})
                 base_lr_group_indices.append(0)
             param_groups.append({"params": category_params, "lr": float(category_lr)})
-            opt = torch.optim.Adam(param_groups)
+            opt = torch.optim.Adam(param_groups, **adam_kwargs)
         else:
-            opt = torch.optim.Adam(model.parameters(), lr=lr)
+            opt = torch.optim.Adam(model.parameters(), lr=lr, **adam_kwargs)
     else:
-        opt = torch.optim.Adam(model.parameters(), lr=lr)
+        opt = torch.optim.Adam(model.parameters(), lr=lr, **adam_kwargs)
     train_losses: List[float] = []
     val_losses: List[float] = []
     model_dtype = _resolve_model_dtype(model)
@@ -318,6 +343,9 @@ def train_with_epoch_plots(
     else:
         raise ValueError(f"Unsupported loss_mode: {loss_mode}")
     use_le = loss_mode == "localized_entropy"
+    le_bce_anchor = float(le_bce_anchor_lambda) if use_le else 0.0
+    if le_bce_anchor < 0:
+        raise ValueError("le_bce_anchor_lambda must be >= 0.")
     cross_batch_history = None
     if use_le and isinstance(le_cross_batch_cfg, dict):
         enabled = bool(le_cross_batch_cfg.get("enabled", False))
@@ -325,10 +353,16 @@ def train_with_epoch_plots(
             "amplification_rate",
             le_cross_batch_cfg.get("amplification_factor"),
         )
+        include_numerator = bool(le_cross_batch_cfg.get("include_numerator", True))
+        if "bce_anchor_lambda" in le_cross_batch_cfg:
+            le_bce_anchor = float(le_cross_batch_cfg.get("bce_anchor_lambda", le_bce_anchor))
         if enabled and amp_factor is not None:
             amp_value = float(amp_factor)
             if amp_value > 0:
-                cross_batch_history = CrossBatchHistory(amp_value)
+                cross_batch_history = CrossBatchHistory(
+                    amp_value,
+                    include_numerator=include_numerator,
+                )
     base_rates_train_t = None
     base_rates_eval_t = None
     if use_le:
@@ -442,7 +476,7 @@ def train_with_epoch_plots(
             if use_le:
                 if br_tracker is not None:
                     br_tracker.update(y, c)
-                loss = localized_entropy(
+                le_loss = localized_entropy(
                     logits=logits,
                     targets=y,
                     conditions=c,
@@ -454,6 +488,13 @@ def train_with_epoch_plots(
                     debug=debug_le_inputs,
                     cross_batch_history=cross_batch_history,
                 )
+                if le_bce_anchor > 0.0:
+                    bce_per = bce_loss(logits, y).view(-1)
+                    w_flat = w.view(-1).to(logits.dtype)
+                    bce_anchor_loss = (bce_per * w_flat).sum() / w_flat.sum().clamp_min(1.0)
+                    loss = le_loss + (le_bce_anchor * bce_anchor_loss)
+                else:
+                    loss = le_loss
             elif loss_mode == "bce":
                 bce_per = bce_loss(logits, y)
                 w_flat = w.view(-1).to(logits.dtype)

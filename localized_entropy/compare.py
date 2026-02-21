@@ -497,6 +497,11 @@ def format_bce_le_summary(
         le_metrics["ece_small"],
         lower_is_better=True,
     )
+    ece_small_abs_delta = (
+        float(le_metrics["ece_small"] - bce_metrics["ece_small"])
+        if np.isfinite(le_metrics["ece_small"]) and np.isfinite(bce_metrics["ece_small"])
+        else float("nan")
+    )
 
     lines = [
         "BCE vs LE summary (lower is better for logloss/brier/ece):",
@@ -504,7 +509,7 @@ def format_bce_le_summary(
         f"Logloss:       BCE={fmt(bce_metrics['logloss'])} | LE={fmt(le_metrics['logloss'])} -> {logloss_winner} (pct_change={logloss_pct})",
         f"Brier:         BCE={fmt(bce_metrics['brier'])} | LE={fmt(le_metrics['brier'])} -> {brier_winner} (pct_change={brier_pct})",
         f"ECE:           BCE={fmt(bce_metrics['ece'])} | LE={fmt(le_metrics['ece'])} -> {ece_winner} (pct_change={ece_pct})",
-        f"ECE small{small_threshold_text}: BCE={fmt(bce_metrics['ece_small'])} | LE={fmt(le_metrics['ece_small'])} -> {ece_small_winner} (pct_change={ece_small_pct})",
+        f"ECE small{small_threshold_text}: BCE={fmt(bce_metrics['ece_small'])} | LE={fmt(le_metrics['ece_small'])} -> {ece_small_winner} (abs_delta={fmt(ece_small_abs_delta)}, pct_change={ece_small_pct})",
     ]
     if eval_conds is not None:
         closeness = summarize_per_condition_closeness(

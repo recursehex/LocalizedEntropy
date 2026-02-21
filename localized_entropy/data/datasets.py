@@ -69,11 +69,22 @@ class TensorBatchLoader:
         self.length = n
         self.device = tensors[0].device
         self.shuffle_on_cpu = bool(shuffle_on_cpu)
-        self._cpu_generator: Optional[torch.Generator] = None
+        self._shuffle_generator: Optional[torch.Generator] = None
+        self._permute_on_cpu = bool(self.shuffle_on_cpu)
         if shuffle_seed is not None:
-            gen = torch.Generator(device="cpu")
+            # Keep CUDA permutations on CUDA to avoid large CPU spikes when datasets
+            # are already staged on device. MPS currently uses CPU permutation.
+            gen_device = "cpu"
+            if (not self.shuffle_on_cpu) and (self.device.type == "cuda"):
+                gen_device = "cuda"
+                self._permute_on_cpu = False
+            else:
+                self._permute_on_cpu = True
+            gen = torch.Generator(device=gen_device)
             gen.manual_seed(int(shuffle_seed))
-            self._cpu_generator = gen
+            self._shuffle_generator = gen
+        elif self.device.type == "cuda":
+            self._permute_on_cpu = False
 
     def __len__(self) -> int:
         """Return the number of batches per epoch."""
@@ -89,12 +100,11 @@ class TensorBatchLoader:
         # Build indices on the same device as tensors to avoid host/device sync.
         indices = torch.arange(self.length, device=self.device, dtype=torch.long)
         if self.shuffle:
-            # For cross-backend reproducibility, optionally build permutation on CPU.
-            use_cpu_perm = self.shuffle_on_cpu or (self._cpu_generator is not None)
-            if use_cpu_perm:
+            # Optional CPU permutation for cross-backend reproducibility.
+            if self._permute_on_cpu:
                 perm_cpu = torch.randperm(
                     self.length,
-                    generator=self._cpu_generator,
+                    generator=self._shuffle_generator,
                     device="cpu",
                 )
                 if self.device.type == "cpu":
@@ -105,7 +115,11 @@ class TensorBatchLoader:
                         non_blocking=(self.device.type == "cuda"),
                     )
             else:
-                indices = indices[torch.randperm(self.length, device=self.device)]
+                indices = torch.randperm(
+                    self.length,
+                    device=self.device,
+                    generator=self._shuffle_generator,
+                )
         for start in range(0, self.length, self.batch_size):
             batch_idx = indices[start:start + self.batch_size]
             yield tuple(t.index_select(0, batch_idx) for t in self.tensors)

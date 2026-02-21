@@ -5,7 +5,8 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from localized_entropy.data.datasets import TensorBatchLoader
-from localized_entropy.training import evaluate, train_with_epoch_plots
+from localized_entropy.data.pipeline import _use_cpu_permutation_for_le
+from localized_entropy.training import _ensure_contiguous_parameters, evaluate, train_with_epoch_plots
 
 
 class _PassThroughLogitModel(nn.Module):
@@ -191,3 +192,94 @@ def test_tensor_batch_loader_deterministic_cpu_shuffle_reproducible():
     assert a_epoch1 == b_epoch1
     assert a_epoch2 == b_epoch2
     assert a_epoch1 != a_epoch2
+
+
+def test_tensor_batch_loader_deterministic_shuffle_reproducible_without_cpu_shuffle():
+    """Deterministic shuffles should be reproducible with shuffle_on_cpu disabled."""
+    x = torch.arange(12, dtype=torch.float32).view(-1, 1)
+    x_cat = torch.zeros((12, 0), dtype=torch.long)
+    c = torch.zeros(12, dtype=torch.long)
+    y = torch.zeros(12, dtype=torch.float32)
+    w = torch.ones(12, dtype=torch.float32)
+    tensors = (x, x_cat, c, y, w)
+
+    loader_a = TensorBatchLoader(
+        tensors,
+        batch_size=4,
+        shuffle=True,
+        shuffle_seed=321,
+        shuffle_on_cpu=False,
+    )
+    loader_b = TensorBatchLoader(
+        tensors,
+        batch_size=4,
+        shuffle=True,
+        shuffle_seed=321,
+        shuffle_on_cpu=False,
+    )
+
+    def _epoch_order(loader):
+        order = []
+        for batch in loader:
+            xb = batch[0].view(-1).to(torch.long)
+            order.extend(xb.tolist())
+        return order
+
+    a_epoch1 = _epoch_order(loader_a)
+    a_epoch2 = _epoch_order(loader_a)
+    b_epoch1 = _epoch_order(loader_b)
+    b_epoch2 = _epoch_order(loader_b)
+
+    assert a_epoch1 == b_epoch1
+    assert a_epoch2 == b_epoch2
+    assert a_epoch1 != a_epoch2
+
+
+def test_ensure_contiguous_parameters_repacks_non_contiguous_parameter():
+    """Training preflight should repack non-contiguous parameters."""
+    model = nn.Module()
+    model.weight = nn.Parameter(torch.randn(4, 3, dtype=torch.float32).t())
+    assert not model.weight.data.is_contiguous()
+
+    patched = _ensure_contiguous_parameters(model)
+
+    assert "weight" in patched
+    assert model.weight.data.is_contiguous()
+
+
+def test_use_cpu_permutation_for_le_when_cross_batch_enabled():
+    """LE cross-batch mode should request CPU permutation for stable ordering."""
+    cfg = {
+        "data": {"source": "synthetic"},
+        "training": {
+            "by_loss": {
+                "localized_entropy": {
+                    "by_source": {
+                        "synthetic": {
+                            "cross_batch": {"enabled": True}
+                        }
+                    }
+                }
+            }
+        },
+    }
+    assert _use_cpu_permutation_for_le(cfg, "synthetic") is True
+
+
+def test_use_cpu_permutation_for_le_when_cross_batch_disabled():
+    """LE without cross-batch should not force CPU permutation."""
+    cfg = {
+        "data": {"source": "synthetic"},
+        "training": {
+            "by_loss": {
+                "localized_entropy": {
+                    "by_source": {
+                        "synthetic": {
+                            "cross_batch": {"enabled": False}
+                        }
+                    }
+                }
+            }
+        },
+    }
+    assert _use_cpu_permutation_for_le(cfg, "synthetic") is False

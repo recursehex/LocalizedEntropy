@@ -269,6 +269,54 @@ def build_dataloaders(
     return LoaderBundle(train_loader, eval_loader, test_loader, loader_note)
 
 
+def _use_cpu_permutation_for_le(cfg: Dict, source: str) -> bool:
+    """Return True when LE cross-batch should force CPU permutations."""
+    train_cfg = cfg.get("training", {})
+    by_loss = train_cfg.get("by_loss", {}) if isinstance(train_cfg, dict) else {}
+    le_cfg = by_loss.get("localized_entropy", {}) if isinstance(by_loss, dict) else {}
+    if not isinstance(le_cfg, dict):
+        return False
+    source_cfg = le_cfg.get("by_source", {}) if isinstance(le_cfg.get("by_source", {}), dict) else {}
+    source_le = source_cfg.get(source, {}) if isinstance(source_cfg, dict) else {}
+    if not isinstance(source_le, dict):
+        return False
+    cross_batch = source_le.get("cross_batch")
+    if not isinstance(cross_batch, dict):
+        return False
+    return bool(cross_batch.get("enabled", False))
+
+
+def build_dataloaders_for_loss(
+    splits: DatasetSplits,
+    cfg: Dict,
+    device: torch.device,
+    use_cuda: bool,
+    use_mps: bool = False,
+    *,
+    loss_mode: Optional[str] = None,
+    batch_size: Optional[int] = None,
+) -> LoaderBundle:
+    """Build dataloaders with optional loss-specific loader overrides."""
+    cfg_local = cfg
+    source = str(cfg.get("data", {}).get("source", "synthetic")).lower().strip()
+    if str(loss_mode).lower().strip() == "localized_entropy":
+        if _use_cpu_permutation_for_le(cfg, source):
+            cfg_local = dict(cfg)
+            device_cfg = dict(cfg.get("device", {}))
+            # LE cross-batch is highly order-sensitive; use CPU permutation for
+            # stable cross-backend behavior when enabled.
+            device_cfg["tensor_loader_shuffle_on_cpu"] = True
+            cfg_local["device"] = device_cfg
+    return build_dataloaders(
+        splits,
+        cfg_local,
+        device,
+        use_cuda,
+        use_mps,
+        batch_size=batch_size,
+    )
+
+
 def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool, use_mps: bool = False) -> PreparedData:
     """Load/prepare data arrays and return splits, loaders, and plot data."""
     seed = int(cfg["project"]["seed"])

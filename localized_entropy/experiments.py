@@ -7,9 +7,9 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from localized_entropy.analysis import collect_logits
+from localized_entropy.analysis import bce_log_loss, collect_logits, expected_calibration_error
 from localized_entropy.config import get_data_source, loss_label, resolve_training_cfg
-from localized_entropy.data.pipeline import build_dataloaders
+from localized_entropy.data.pipeline import build_dataloaders_for_loss
 from localized_entropy.models import ConditionProbNet
 from localized_entropy.training import (
     GradSqStats,
@@ -37,6 +37,81 @@ class TrainRunResult:
     grad_sq_stats: Optional[GradSqStats]
 
 
+def _small_ece(
+    preds: np.ndarray,
+    labels: np.ndarray,
+    *,
+    bins: int,
+    min_count: int,
+    small_prob_max: float,
+    small_prob_quantile: float,
+) -> float:
+    """Compute low-probability ECE with quantile fallback."""
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    threshold = float(small_prob_max)
+    mask = p <= threshold
+    if (not mask.any()) and (small_prob_quantile is not None):
+        threshold = float(np.quantile(p, small_prob_quantile))
+        mask = p <= threshold
+    if not mask.any():
+        return float("nan")
+    ece_small, _ = expected_calibration_error(
+        p[mask],
+        y[mask],
+        bins=int(bins),
+        min_count=int(min_count),
+    )
+    return float(ece_small)
+
+
+def _score_epoch_preds(
+    metric: str,
+    preds: np.ndarray,
+    labels: np.ndarray,
+    *,
+    ece_bins: int,
+    ece_min_count: int,
+    small_prob_max: float,
+    small_prob_quantile: float,
+) -> float:
+    """Score epoch predictions for checkpoint selection (lower is better)."""
+    m = str(metric).lower().strip()
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    if p.size == 0 or y.size == 0 or p.shape[0] != y.shape[0]:
+        return float("nan")
+    if m == "ece":
+        ece, _ = expected_calibration_error(
+            p,
+            y,
+            bins=int(ece_bins),
+            min_count=int(ece_min_count),
+        )
+        return float(ece)
+    if m in {"ece_small", "small_ece"}:
+        return _small_ece(
+            p,
+            y,
+            bins=int(ece_bins),
+            min_count=int(ece_min_count),
+            small_prob_max=float(small_prob_max),
+            small_prob_quantile=float(small_prob_quantile),
+        )
+    if m in {"logloss", "bce"}:
+        return float(bce_log_loss(p, y))
+    if m == "brier":
+        return float(np.mean((p - y) ** 2))
+    if m in {"neg_accuracy", "minus_accuracy"}:
+        return float(-np.mean((p >= 0.5) == (y >= 0.5)))
+    return float("nan")
+
+
+def _snapshot_model_state(model: torch.nn.Module) -> Dict[str, torch.Tensor]:
+    """Clone model state to CPU for best-checkpoint restore."""
+    return {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+
+
 def build_loss_loaders(
     cfg: dict,
     loss_mode: str,
@@ -48,7 +123,15 @@ def build_loss_loaders(
     """Build dataloaders using per-loss training overrides when configured."""
     train_cfg = resolve_training_cfg(cfg, loss_mode)
     batch_size = train_cfg.get("batch_size", cfg.get("training", {}).get("batch_size"))
-    loaders = build_dataloaders(splits, cfg, device, use_cuda, use_mps, batch_size=batch_size)
+    loaders = build_dataloaders_for_loss(
+        splits,
+        cfg,
+        device,
+        use_cuda,
+        use_mps,
+        loss_mode=loss_mode,
+        batch_size=batch_size,
+    )
     return loaders, train_cfg
 
 
@@ -215,7 +298,16 @@ def train_single_loss(
     debug_gradients: bool = False,
     debug_le_inputs: bool = False,
     le_cross_batch_cfg: Optional[dict] = None,
+    le_bce_anchor_lambda: float = 0.0,
     print_embedding_table: bool = False,
+    best_checkpoint_metric: Optional[str] = None,
+    best_checkpoint_min_epoch: int = 1,
+    best_checkpoint_restore: bool = False,
+    best_checkpoint_labels: Optional[np.ndarray] = None,
+    ece_bins: int = 20,
+    ece_min_count: int = 1,
+    small_prob_max: float = 0.01,
+    small_prob_quantile: float = 0.1,
 ) -> TrainRunResult:
     """Train one model/loss mode and collect evaluation outputs."""
     base_rates_train = le_base_rates_train
@@ -237,6 +329,55 @@ def train_single_loss(
             base_rates_train_eval = base_rates_train
         if base_rates_eval is None:
             base_rates_eval = base_rates_train
+    auto_best_checkpoint = False
+    if (
+        loss_mode == "localized_entropy"
+        and eval_has_labels
+        and best_checkpoint_labels is not None
+        and (best_checkpoint_metric is None)
+        and (not best_checkpoint_restore)
+    ):
+        # Keep notebook/direct-call behavior aligned with config-driven runs:
+        # LE tail calibration often peaks early, so default to ece_small restore.
+        best_checkpoint_metric = "ece_small"
+        best_checkpoint_restore = True
+        best_checkpoint_min_epoch = max(2, int(best_checkpoint_min_epoch))
+        auto_best_checkpoint = True
+    best_metric_name = (
+        str(best_checkpoint_metric).lower().strip()
+        if best_checkpoint_metric is not None
+        else ""
+    )
+    best_min_epoch = max(1, int(best_checkpoint_min_epoch))
+    best_state: Optional[Dict[str, torch.Tensor]] = None
+    best_epoch: Optional[int] = None
+    best_score = float("inf")
+    user_eval_callback = eval_callback
+
+    def _combined_eval_callback(preds: np.ndarray, epoch: int) -> None:
+        nonlocal best_state, best_epoch, best_score
+        if user_eval_callback is not None:
+            user_eval_callback(preds, epoch)
+        if (not best_checkpoint_restore) or (not best_metric_name):
+            return
+        if epoch < best_min_epoch or best_checkpoint_labels is None:
+            return
+        score = _score_epoch_preds(
+            best_metric_name,
+            preds,
+            best_checkpoint_labels,
+            ece_bins=ece_bins,
+            ece_min_count=ece_min_count,
+            small_prob_max=small_prob_max,
+            small_prob_quantile=small_prob_quantile,
+        )
+        if not np.isfinite(score):
+            return
+        if score < best_score:
+            best_score = float(score)
+            best_epoch = int(epoch)
+            best_state = _snapshot_model_state(model)
+
     train_losses, eval_losses, grad_sq_stats, eval_batch_losses = train_with_epoch_plots(
         model=model,
         train_loader=train_loader,
@@ -253,7 +394,7 @@ def train_single_loss(
         focal_gamma=focal_gamma,
         non_blocking=non_blocking,
         plot_eval_hist_epochs=plot_eval_hist_epochs,
-        eval_callback=eval_callback,
+        eval_callback=_combined_eval_callback if (eval_callback is not None or best_checkpoint_restore) else None,
         eval_every_n_batches=eval_every_n_batches,
         eval_batch_callback=eval_batch_callback,
         track_eval_batch_losses=collect_eval_batch_losses,
@@ -261,8 +402,20 @@ def train_single_loss(
         debug_gradients=debug_gradients,
         debug_le_inputs=debug_le_inputs,
         le_cross_batch_cfg=le_cross_batch_cfg,
+        le_bce_anchor_lambda=le_bce_anchor_lambda,
         print_embedding_table=print_embedding_table,
     )
+    if auto_best_checkpoint:
+        print(
+            f"[INFO] Auto-enabled LE best checkpoint: metric={best_metric_name} "
+            f"min_epoch={best_min_epoch}"
+        )
+    if best_checkpoint_restore and best_state is not None and best_epoch is not None:
+        model.load_state_dict(best_state)
+        print(
+            f"[INFO] Restored best checkpoint by {best_metric_name}: "
+            f"epoch={best_epoch} score={best_score:.8g}"
+        )
     eval_loss, eval_preds = evaluate_or_predict(
         model,
         eval_loader,
@@ -353,11 +506,17 @@ def run_repeated_loss_experiments(
             loss_loaders,
             splits,
         )
+        loss_train_eval_labels = splits.y_eval
+        if eval_split == "train":
+            loss_train_eval_labels = splits.y_train
+        elif eval_split == "test" and eval_labels is not None:
+            loss_train_eval_labels = eval_labels
         per_loss[loss_mode] = {
             "train_cfg": loss_train_cfg,
             "loaders": loss_loaders,
             "eval_loader": loss_eval_loader,
             "train_eval_loader": loss_train_eval_loader,
+            "train_eval_labels": loss_train_eval_labels,
             "focal_alpha": focal_alpha,
             "focal_gamma": focal_gamma,
         }
@@ -386,6 +545,10 @@ def run_repeated_loss_experiments(
                 lr_category = _resolve_lr_category(train_cfg)
                 lr_zero_after_epochs = train_cfg.get("lr_zero_after_epochs")
             le_cross_batch_cfg = None
+            le_bce_anchor_lambda = 0.0
+            best_checkpoint_metric = None
+            best_checkpoint_min_epoch = 1
+            best_checkpoint_restore = False
             if loss_mode == "localized_entropy" and isinstance(train_cfg, dict):
                 if isinstance(train_cfg.get("cross_batch"), dict):
                     le_cross_batch_cfg = train_cfg.get("cross_batch")
@@ -393,6 +556,23 @@ def run_repeated_loss_experiments(
                     le_cfg = train_cfg.get("localized_entropy")
                     if isinstance(le_cfg, dict):
                         le_cross_batch_cfg = le_cfg.get("cross_batch")
+                le_bce_anchor_lambda = float(
+                    train_cfg.get(
+                        "le_bce_anchor_lambda",
+                        cfg.get("training", {}).get("le_bce_anchor_lambda", 0.0),
+                    )
+                )
+                best_cfg = train_cfg.get("best_checkpoint")
+                if isinstance(best_cfg, dict):
+                    best_checkpoint_metric = best_cfg.get("metric")
+                    best_checkpoint_min_epoch = int(best_cfg.get("min_epoch", 1))
+                    best_checkpoint_restore = bool(best_cfg.get("restore", False))
+                else:
+                    best_checkpoint_metric = train_cfg.get("best_checkpoint_metric")
+                    if "best_checkpoint_min_epoch" in train_cfg:
+                        best_checkpoint_min_epoch = int(train_cfg.get("best_checkpoint_min_epoch", 1))
+                    if "best_checkpoint_restore" in train_cfg:
+                        best_checkpoint_restore = bool(train_cfg.get("best_checkpoint_restore", False))
             result = train_single_loss(
                 model=model,
                 loss_mode=loss_mode,
@@ -420,6 +600,15 @@ def run_repeated_loss_experiments(
                 debug_gradients=debug_gradients,
                 debug_le_inputs=debug_le_inputs,
                 le_cross_batch_cfg=le_cross_batch_cfg,
+                le_bce_anchor_lambda=le_bce_anchor_lambda,
+                best_checkpoint_metric=best_checkpoint_metric,
+                best_checkpoint_min_epoch=best_checkpoint_min_epoch,
+                best_checkpoint_restore=best_checkpoint_restore,
+                best_checkpoint_labels=loss_bundle.get("train_eval_labels"),
+                ece_bins=int(cfg.get("evaluation", {}).get("ece_bins", 20)),
+                ece_min_count=int(cfg.get("evaluation", {}).get("ece_min_count", 1)),
+                small_prob_max=float(cfg.get("evaluation", {}).get("small_prob_max", 0.01)),
+                small_prob_quantile=float(cfg.get("evaluation", {}).get("small_prob_quantile", 0.1)),
             )
             results[loss_mode].append(result)
     return results
