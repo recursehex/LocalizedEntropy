@@ -255,6 +255,8 @@ def train_with_epoch_plots(
     device: torch.device,
     epochs: int,
     lr: float,
+    lr_decay: float = 1.0,
+    lr_category_decay: float = 1.0,
     category_lr: Optional[float] = None,
     lr_zero_after_epochs: Optional[int] = None,
     condition_weights: Optional[np.ndarray] = None,
@@ -276,7 +278,14 @@ def train_with_epoch_plots(
     print_embedding_table: bool = False,
 ) -> Tuple[List[float], List[float], Optional[GradSqStats], List[dict]]:
     """Train a model while optionally collecting plots and diagnostics."""
+    lr_decay_value = float(lr_decay)
+    if lr_decay_value <= 0.0:
+        raise ValueError("lr_decay must be > 0.")
+    lr_category_decay_value = float(lr_category_decay)
+    if lr_category_decay_value <= 0.0:
+        raise ValueError("lr_category_decay must be > 0.")
     base_lr_group_indices = [0]
+    category_lr_group_indices = []
     if category_lr is not None:
         emb_layer = getattr(model, "embedding", None)
         category_params = list(emb_layer.parameters()) if emb_layer is not None else []
@@ -288,7 +297,9 @@ def train_with_epoch_plots(
             if base_params:
                 param_groups.append({"params": base_params, "lr": lr})
                 base_lr_group_indices.append(0)
+            category_group_idx = len(param_groups)
             param_groups.append({"params": category_params, "lr": float(category_lr)})
+            category_lr_group_indices.append(category_group_idx)
             opt = torch.optim.Adam(param_groups)
         else:
             opt = torch.optim.Adam(model.parameters(), lr=lr)
@@ -506,6 +517,12 @@ def train_with_epoch_plots(
                     else:
                         print(f"[DEBUG] {name}:\n{param.grad.detach()}")
             opt.step()
+            if lr_decay_value != 1.0:
+                for group_idx in base_lr_group_indices:
+                    opt.param_groups[group_idx]["lr"] *= lr_decay_value
+            if lr_category_decay_value != 1.0:
+                for group_idx in category_lr_group_indices:
+                    opt.param_groups[group_idx]["lr"] *= lr_category_decay_value
             batch_weight = float(w.sum().item())
             running += float(loss.item()) * batch_weight
             count += batch_weight
