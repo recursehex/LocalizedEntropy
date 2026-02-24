@@ -40,7 +40,7 @@ The notebook stays small and delegates everything to the modules in `localized_e
 - `ctr` section: file paths, numeric feature columns, condition column, filtering rules, and preprocessing flags.
 - `synthetic` section: number of conditions, sample counts, parameter ranges, `numeric_features`, and optional uniform log10 settings (`uniform_log10_means`, `uniform_log10_std`).
 - `model`: hidden sizes, embedding dimension, activation/norm, dropout.
-- `training`: epochs, learning rate, batch size, loss mode, and loss comparisons.
+- `training`: epochs, learning rates (`lr`, optional `lr_category`), LR decays, batch size, loss mode, and loss comparisons.
 - `plots`: toggles for every chart and summary table.
 - `evaluation`: bins/thresholds for BCE + calibration summaries (including small-probability calibration, aka ECE computed only on low-probability predictions).
 
@@ -53,6 +53,38 @@ The notebook stays small and delegates everything to the modules in `localized_e
 - CTR filtering is applied in `localized_entropy/data/ctr.py` via `ctr.filter` (id lists or top/bottom-k by impressions or click rate).
 - If `ctr.filter.cache.enabled` is true, the pipeline writes filtered CSVs to disk before loading to reduce memory use.
 - CTR distribution plots use a sample size from `ctr.plot_sample_size` and toggles in `plots.ctr_data_distributions` and `plots.ctr_label_rates`. Set `plots.ctr_use_density` to `true` if you want density curves instead of counts.
+
+## What The Model Trains On
+- Each training example is a tuple `(x_num, x_cat, c, y, w)`:
+  - `x_num`: numeric feature vector.
+  - `x_cat`: per-column categorical IDs (optional; can be empty).
+  - `c`: condition ID (for CTR this is typically ad ID such as encoded `C14`).
+  - `y`: binary label.
+  - `w`: sample weight.
+- `ConditionedLogitMLP` builds one logit from:
+  - numeric features,
+  - one learned condition embedding row `model.embedding[c]`,
+  - optional categorical embedding lookups from `model.cat_embeddings`.
+- Per-sample forward path:
+  - Lookup the condition vector `e_cond = model.embedding[c]`.
+  - Lookup one vector per categorical column (when enabled) and concatenate.
+  - Form the MLP input vector
+    `h0 = concat(x_num, e_cond, e_cat_1, ..., e_cat_K)`.
+  - Apply `model.net(h0)` to produce one scalar logit `z`.
+  - Convert to probability only at loss/eval time via `sigmoid(z)`.
+- BCE, LE, and focal losses are computed from that logit and optimized end-to-end.
+
+## LR vs `lr_category`
+- `training.lr` applies to the base parameter group:
+  - MLP layers in `model.net`,
+  - output layer,
+  - optional categorical embedding tables (`model.cat_embeddings`),
+  - any non-condition-embedding parameters.
+- `training.lr_category` (or alias `LRCategory`) applies only to the condition embedding table `model.embedding`.
+- `training.lr_decay` multiplies base-group LR after each optimizer step.
+- `training.lr_category_decay` multiplies condition-embedding-group LR after each optimizer step.
+- `training.lr_zero_after_epochs` sets base-group LR to `0` after the specified epoch; with a non-null `lr_category`, condition embeddings can continue updating while base parameters are frozen.
+- Current experiment wiring enables `lr_category` / `lr_zero_after_epochs` for synthetic + LE runs in the repeated-loss experiment helper.
 
 ## Data sources
 - Real data currently uses the Avazu CTR dataset from Kaggle located in `data/`. The repo does not distribute the dataset.

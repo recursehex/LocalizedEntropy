@@ -70,12 +70,29 @@ Step-by-step pipeline:
   (`device_ip_count`, `device_id_count`) for CTR runs.
 
 5) Model construction
-- `localized_entropy/models.py` defines `ConditionProbNet`:
-  - Condition embedding.
-  - Optional categorical embeddings.
-  - Feed-forward MLP to a single logit, with configurable hidden sizes,
-    activation, normalization, and dropout (per-layer settings supported
-    via `configs/default.json`).
+- `localized_entropy/models.py` defines `ConditionedLogitMLP`:
+  - Condition embedding table: `model.embedding` with shape
+    `[num_conditions, embed_dim]`.
+  - Optional per-column categorical embedding tables:
+    `model.cat_embeddings`.
+  - Feed-forward MLP (`model.net`) to a single logit, with configurable
+    hidden sizes, activation, normalization, and dropout (per-layer
+    settings supported via `configs/default.json`).
+- For each sample `(x_num, x_cat, c, y, w)`:
+  - `c` indexes one row of `model.embedding`.
+  - each categorical column in `x_cat` indexes one row in its matching
+    categorical embedding table.
+  - numeric features + looked-up embeddings are concatenated into
+    `h0 = concat(x_num, e_cond, e_cat_1, ..., e_cat_K)`.
+  - `h0` is passed through `model.net` to produce one scalar logit `z`
+    (probability is `sigmoid(z)` during eval/loss computation).
+  - first-layer width is
+    `num_numeric + embed_dim + (num_categorical_columns * cat_embed_dim)`.
+- Gradient flow behavior:
+  - shared parameters (`model.net` and categorical embeddings) receive
+    gradients from all samples in the batch.
+  - only condition-embedding rows whose condition IDs appear in the batch
+    receive gradient updates on that step.
 
 6) Initial prediction diagnostics (untrained)
 - One batch is passed through the model to report logit and
@@ -103,10 +120,22 @@ Step-by-step pipeline:
 - When configured, BCE/LE use per-loss training overrides for
   `epochs`, `lr`, and `batch_size`, rebuilding dataloaders per loss to
   honor different batch sizes.
-- When configured, the optimizer can use a separate learning rate
-  for the condition embedding table (`training.lr_category`, alias
-  `LRCategory`) and optionally zero out the base learning rate after
-  `training.lr_zero_after_epochs`.
+- Optimizer parameter-group behavior:
+  - Base group (uses `training.lr`): all model parameters except
+    `model.embedding`.
+  - Condition-embedding group (uses `training.lr_category` when non-null):
+    `model.embedding` only.
+  - `training.lr_decay` multiplies base-group LR after each optimizer step.
+  - `training.lr_category_decay` multiplies condition-embedding-group LR
+    after each optimizer step.
+  - `training.lr_zero_after_epochs` sets base-group LR to zero after the
+    specified epoch, so only the condition embedding table can continue to
+    update when `lr_category` is enabled.
+  - If `lr_category` is null, training falls back to a single parameter
+    group at `training.lr`.
+- In the repeated-loss experiment helper (`localized_entropy/experiments.py`),
+  `lr_category` and `lr_zero_after_epochs` are currently wired for
+  `data.source=synthetic` with `loss_mode=localized_entropy`.
 - For LE, per-condition base rates are computed once from the training data
   and reused as fixed normalization factors during training (streaming
   base rates are only used as a fallback when precomputed rates are absent).

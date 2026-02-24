@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from localized_entropy.analysis import collect_logits
 from localized_entropy.config import get_data_source, loss_label, resolve_training_cfg
 from localized_entropy.data.pipeline import build_dataloaders
-from localized_entropy.models import ConditionProbNet
+from localized_entropy.models import ConditionedLogitMLP
 from localized_entropy.training import (
     GradSqStats,
     compute_base_rates_from_loader,
@@ -67,8 +67,8 @@ def build_model(
     splits,
     device: torch.device,
     dtype: Optional[torch.dtype] = None,
-) -> ConditionProbNet:
-    """Construct a ConditionProbNet from config and data splits."""
+) -> ConditionedLogitMLP:
+    """Construct a ConditionedLogitMLP from config and data splits."""
     model_cfg = cfg["model"]
     hidden_sizes = model_cfg.get("hidden_sizes")
     if hidden_sizes is not None:
@@ -80,7 +80,7 @@ def build_model(
     activation = model_cfg.get("activation", "relu")
     norm = model_cfg.get("norm")
     dropout = model_cfg.get("dropout", 0.3)
-    model = ConditionProbNet(
+    model = ConditionedLogitMLP(
         num_conditions=int(splits.num_conditions),
         num_numeric=int(splits.x_train.shape[1]),
         embed_dim=int(model_cfg.get("embed_dim", 16)),

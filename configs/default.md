@@ -60,16 +60,22 @@ Template model definitions included in `configs/default.json`:
 
 ### training
 - `training.epochs`: Number of training epochs.
-- `training.lr`: Adam learning rate.
+- `training.lr`: Adam learning rate for the base optimizer group
+  (all parameters except the condition embedding table).
 - `training.lr_decay`: Multiplicative per-batch learning-rate decay
-  factor applied after each optimizer step (`1.0` disables decay).
+  factor applied after each optimizer step to the base group
+  (`1.0` disables decay).
 - `training.lr_category_decay`: Multiplicative per-batch decay factor
-  for `training.lr_category` groups only (`1.0` disables decay).
+  for the condition-embedding optimizer group only (`1.0` disables decay;
+  no-op if `training.lr_category` is unset).
 - `training.lr_category`: Optional learning rate applied only to the
-  condition embedding table. Accepts `LRCategory` as an alias
-  in JSON configs.
+  condition embedding table (`model.embedding`). Accepts `LRCategory` as an
+  alias in JSON configs.
 - `training.lr_zero_after_epochs`: Optional epoch count after which the
-  base learning rate is set to 0.
+  base learning rate group is set to `0`.
+  - With `training.lr_category` set, this freezes non-condition parameters
+    while allowing condition embeddings to continue updating.
+  - Without `training.lr_category`, all trainable parameters are frozen.
 - `training.batch_size`: Train/eval batch size.
 - `training.loss_mode`: `localized_entropy`, `bce`, `focal`, `both` (train
   BCE + LE sequentially), `all` (train BCE + LE + focal sequentially), or
@@ -171,10 +177,24 @@ Example:
 ```
 
 ### model
+- `model` input composition (`ConditionedLogitMLP`): for each sample, the model
+  concatenates numeric features, one condition embedding lookup from
+  `model.embedding` using the encoded condition ID, and optional categorical
+  embedding lookups from `model.cat_embeddings`.
+  - Forward pass:
+    1. `cond` indexes `model.embedding` to fetch one condition vector.
+    2. Each categorical column in `x_cat` indexes its corresponding table in
+       `model.cat_embeddings` (if configured).
+    3. The model concatenates `[x_num, cond_embedding, cat_embeddings...]`.
+    4. The concatenated vector is passed through `model.net` and mapped to one
+       scalar logit (probabilities are obtained later with sigmoid).
+  - Input width to first linear layer:
+    `num_numeric + embed_dim + (#categorical_columns * cat_embed_dim)`.
 - `model.hidden_sizes`: MLP hidden layer sizes.
-- `model.embed_dim`: Condition embedding dimension.
+- `model.embed_dim`: Condition embedding dimension for
+  `model.embedding` (condition ID lookup table).
 - `model.cat_embed_dim`: Categorical embedding dimension
-  (defaults to `embed_dim` if absent).
+  for `model.cat_embeddings` (defaults to `embed_dim` if absent).
 - `model.activation`: Hidden-layer activation (`relu`, `gelu`, `silu`,
   `tanh`, `leaky_relu`, `elu`, `selu`, `sigmoid`, or `none`). Supports a
   list (length must match `hidden_sizes`) to set per-layer activations.

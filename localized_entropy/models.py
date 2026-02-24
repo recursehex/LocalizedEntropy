@@ -82,7 +82,7 @@ def _resolve_dropout(value: _LayerValue) -> float:
     return prob
 
 
-class ConditionProbNet(nn.Module):
+class ConditionedLogitMLP(nn.Module):
     def __init__(
         self,
         num_conditions: int,
@@ -95,7 +95,12 @@ class ConditionProbNet(nn.Module):
         activation: _LayerSpec = "relu",
         norm: _LayerSpec = None,
     ):
-        """Build an MLP with condition and categorical embeddings."""
+        """Embedding-conditioned MLP that returns one logit per sample.
+
+        Input tensors are combined as:
+        [numeric features, condition embedding lookup, optional categorical
+        embedding lookups] -> shared MLP -> scalar logit.
+        """
         super().__init__()
         if hidden_sizes is None:
             hidden_sizes = (256, 256, 128, 64)
@@ -132,7 +137,7 @@ class ConditionProbNet(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x_num: torch.Tensor, x_cat: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
-        """Compute logits for numeric/categorical inputs and condition IDs."""
+        """Compute a batch of logits from numeric, categorical, and condition inputs."""
         emb = self.embedding(cond)
         # Concatenate numeric features with condition + categorical embeddings before the MLP.
         parts = [x_num, emb]
