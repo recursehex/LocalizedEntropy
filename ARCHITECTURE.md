@@ -185,6 +185,12 @@ Step-by-step pipeline:
   - BCE log loss, ECE, ROC-AUC, PR-AUC.
   - Accuracy/F1 at 0.5 (global) plus per-condition accuracy/F1.
   - Per-condition ECE and base rates.
+  - ECE backend is configurable via `evaluation.ece_method`:
+    `custom`, `adaptive`, `smooth`, `adaptive_lib`, or `smooth_lib`.
+    The `_lib` variants use external implementations (`pandas.qcut`
+    and `scipy.ndimage.gaussian_filter1d`), while the others are
+    in-repo implementations. Smooth parameters are controlled by
+    `evaluation.ece_smooth_*`.
 - Optionally compares loss values under alternate loss modes
   (`training.eval_compare_losses`).
 - If BCE + LE are trained, the notebook builds a per-condition
@@ -201,6 +207,12 @@ Step-by-step pipeline:
   multiple seeds and computes paired Wilcoxon signed-rank tests over
   logloss/brier/ece/ece_small/accuracy deltas to report p-values, with
   `ece_small` focused on low-probability predictions.
+- Repeated-run ECE metrics use the same configured ECE backend as
+  single-run evaluation (`evaluation.ece_method`).
+- One-sided Wilcoxon alternatives are oriented so the test direction
+  matches the printed delta convention (`delta > 0` favors LE), and
+  degenerate all-tie inputs return a non-significant result instead of
+  unstable failures.
 - If evaluation conditions are available, it also computes per-condition
   calibration Wilcoxon tests on absolute gaps between per-condition
   prediction means and base rates.
@@ -280,7 +292,8 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
     the notebook training loop).
 - `localized_entropy/analysis.py`:
   - Summary stats (label, condition, prediction).
-  - ECE, ROC-AUC, PR-AUC.
+  - ECE (`custom`, `adaptive`, `smooth`, `adaptive_lib`, `smooth_lib`),
+    ROC-AUC, PR-AUC.
   - Binary accuracy/F1 metrics and per-condition diagnostics.
   - Per-condition metrics and LE numerator/denominator diagnostics.
     Per-condition eval metric tables are ordered by base rate descending

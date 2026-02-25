@@ -315,6 +315,9 @@ def summarize_model_metrics(
     *,
     ece_bins: int = 20,
     ece_min_count: int = 1,
+    ece_method: str = "custom",
+    ece_smooth_bandwidth: float = 0.05,
+    ece_smooth_grid_bins: Optional[int] = None,
     threshold: float = 0.5,
     small_prob_max: float = 0.01,
     small_prob_quantile: float = 0.1,
@@ -326,7 +329,15 @@ def summarize_model_metrics(
     logloss = bce_log_loss(p, y)
     brier = float(np.mean((p - y) ** 2))
     acc = float(np.mean((p >= threshold) == (y >= 0.5)))
-    ece, _ = expected_calibration_error(p, y, bins=ece_bins, min_count=ece_min_count)
+    ece, _ = expected_calibration_error(
+        p,
+        y,
+        bins=ece_bins,
+        min_count=ece_min_count,
+        method=ece_method,
+        smooth_bandwidth=ece_smooth_bandwidth,
+        smooth_grid_bins=ece_smooth_grid_bins,
+    )
     small_threshold = float(small_prob_max)
     small_mask = p <= small_threshold
     if not small_mask.any() and small_prob_quantile is not None:
@@ -339,6 +350,9 @@ def summarize_model_metrics(
             y[small_mask],
             bins=ece_bins,
             min_count=ece_min_count,
+            method=ece_method,
+            smooth_bandwidth=ece_smooth_bandwidth,
+            smooth_grid_bins=ece_smooth_grid_bins,
         )
     else:
         ece_small = float("nan")
@@ -385,6 +399,9 @@ def format_bce_le_summary(
     condition_label: str = "condition",
     ece_bins: int = 20,
     ece_min_count: int = 1,
+    ece_method: str = "custom",
+    ece_smooth_bandwidth: float = 0.05,
+    ece_smooth_grid_bins: Optional[int] = None,
     threshold: float = 0.5,
     small_prob_max: float = 0.01,
     small_prob_quantile: float = 0.1,
@@ -397,6 +414,9 @@ def format_bce_le_summary(
         labels,
         ece_bins=ece_bins,
         ece_min_count=ece_min_count,
+        ece_method=ece_method,
+        ece_smooth_bandwidth=ece_smooth_bandwidth,
+        ece_smooth_grid_bins=ece_smooth_grid_bins,
         threshold=threshold,
         small_prob_max=small_prob_max,
         small_prob_quantile=small_prob_quantile,
@@ -407,6 +427,9 @@ def format_bce_le_summary(
         labels,
         ece_bins=ece_bins,
         ece_min_count=ece_min_count,
+        ece_method=ece_method,
+        ece_smooth_bandwidth=ece_smooth_bandwidth,
+        ece_smooth_grid_bins=ece_smooth_grid_bins,
         threshold=threshold,
         small_prob_max=small_prob_max,
         small_prob_quantile=small_prob_quantile,
@@ -497,14 +520,27 @@ def format_bce_le_summary(
         le_metrics["ece_small"],
         lower_is_better=True,
     )
+    ece_method_label = str(ece_method).strip().lower()
+    if ece_method_label in {"custom", "fixed", "hist", "histogram", "ece"}:
+        ece_label = "ECE"
+    elif ece_method_label in {"adaptive", "adaptive_ece", "adaptive-ece"}:
+        ece_label = "Adaptive ECE"
+    elif ece_method_label in {"adaptive_lib", "adaptive-lib", "adaptive_library", "adaptive-library"}:
+        ece_label = "Adaptive ECE (lib)"
+    elif ece_method_label in {"smooth", "smooth_ece", "smooth-ece"}:
+        ece_label = "Smooth ECE"
+    elif ece_method_label in {"smooth_lib", "smooth-lib", "smooth_library", "smooth-library"}:
+        ece_label = "Smooth ECE (lib)"
+    else:
+        ece_label = f"ECE ({ece_method})"
 
     lines = [
         "BCE vs LE summary (lower is better for logloss/brier/ece):",
         f"Accuracy@0.5: BCE={fmt(bce_metrics['accuracy'])} | LE={fmt(le_metrics['accuracy'])} -> {acc_winner} (pct_change={acc_pct})",
         f"Logloss:       BCE={fmt(bce_metrics['logloss'])} | LE={fmt(le_metrics['logloss'])} -> {logloss_winner} (pct_change={logloss_pct})",
         f"Brier:         BCE={fmt(bce_metrics['brier'])} | LE={fmt(le_metrics['brier'])} -> {brier_winner} (pct_change={brier_pct})",
-        f"ECE:           BCE={fmt(bce_metrics['ece'])} | LE={fmt(le_metrics['ece'])} -> {ece_winner} (pct_change={ece_pct})",
-        f"ECE small{small_threshold_text}: BCE={fmt(bce_metrics['ece_small'])} | LE={fmt(le_metrics['ece_small'])} -> {ece_small_winner} (pct_change={ece_small_pct})",
+        f"{ece_label}:           BCE={fmt(bce_metrics['ece'])} | LE={fmt(le_metrics['ece'])} -> {ece_winner} (pct_change={ece_pct})",
+        f"{ece_label} small{small_threshold_text}: BCE={fmt(bce_metrics['ece_small'])} | LE={fmt(le_metrics['ece_small'])} -> {ece_small_winner} (pct_change={ece_small_pct})",
     ]
     if eval_conds is not None:
         closeness = summarize_per_condition_closeness(
@@ -597,6 +633,16 @@ def _safe_wilcoxon(
     alternative: str = "two-sided",
 ) -> Tuple[float, float]:
     """Run Wilcoxon with compatibility handling for SciPy versions."""
+    x = np.asarray(x, dtype=np.float64).reshape(-1)
+    y = np.asarray(y, dtype=np.float64).reshape(-1)
+    valid = np.isfinite(x) & np.isfinite(y)
+    x = x[valid]
+    y = y[valid]
+    if x.size == 0:
+        return float("nan"), float("nan")
+    if np.all(np.isclose(x - y, 0.0, atol=1e-15, rtol=0.0)):
+        # Degenerate no-difference case; report non-significant by construction.
+        return 0.0, 1.0
     try:
         # SciPy's wilcoxon signature varies across versions; handle both.
         stat, p_value = wilcoxon(x, y, zero_method=zero_method, alternative=alternative)
@@ -607,12 +653,35 @@ def _safe_wilcoxon(
     return float(stat), float(p_value)
 
 
+def _orient_wilcoxon_inputs(
+    bce_vals: np.ndarray,
+    le_vals: np.ndarray,
+    *,
+    lower_is_better: bool,
+    alternative: str,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Orient Wilcoxon inputs so one-sided tests align with LE-favoring deltas."""
+    alt = str(alternative).strip().lower()
+    if alt == "greater":
+        if lower_is_better:
+            return bce_vals, le_vals
+        return le_vals, bce_vals
+    if alt == "less":
+        if lower_is_better:
+            return le_vals, bce_vals
+        return bce_vals, le_vals
+    return bce_vals, le_vals
+
+
 def build_repeat_metrics_frame(
     runs: List[TrainRunResult],
     eval_labels: np.ndarray,
     *,
     ece_bins: int = 20,
     ece_min_count: int = 1,
+    ece_method: str = "custom",
+    ece_smooth_bandwidth: float = 0.05,
+    ece_smooth_grid_bins: Optional[int] = None,
     threshold: float = 0.5,
     small_prob_max: float = 0.01,
     small_prob_quantile: float = 0.1,
@@ -635,6 +704,9 @@ def build_repeat_metrics_frame(
             labels,
             ece_bins=ece_bins,
             ece_min_count=ece_min_count,
+            ece_method=ece_method,
+            ece_smooth_bandwidth=ece_smooth_bandwidth,
+            ece_smooth_grid_bins=ece_smooth_grid_bins,
             threshold=threshold,
             small_prob_max=small_prob_max,
             small_prob_quantile=small_prob_quantile,
@@ -690,14 +762,23 @@ def build_wilcoxon_summary(
     for metric, lower_is_better in metric_map.items():
         if metric not in bce_metrics.columns or metric not in le_metrics.columns:
             continue
-        bce_vals = bce_metrics[metric].to_numpy()
-        le_vals = le_metrics[metric].to_numpy()
+        bce_vals = bce_metrics[metric].to_numpy(dtype=np.float64)
+        le_vals = le_metrics[metric].to_numpy(dtype=np.float64)
         if bce_vals.size != le_vals.size:
             raise ValueError(f"Repeat runs for '{metric}' do not align between BCE and LE.")
+        valid = np.isfinite(bce_vals) & np.isfinite(le_vals)
+        bce_vals = bce_vals[valid]
+        le_vals = le_vals[valid]
         delta = (bce_vals - le_vals) if lower_is_better else (le_vals - bce_vals)
-        stat, p_value = _safe_wilcoxon(
+        x_vals, y_vals = _orient_wilcoxon_inputs(
             bce_vals,
             le_vals,
+            lower_is_better=bool(lower_is_better),
+            alternative=alternative,
+        )
+        stat, p_value = _safe_wilcoxon(
+            x_vals,
+            y_vals,
             zero_method=zero_method,
             alternative=alternative,
         )

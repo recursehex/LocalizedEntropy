@@ -417,6 +417,13 @@ Example: small synthetic dataset with 4 conditions and 3 features:
 - `evaluation.split`: `train`, `eval`, or `test` for evaluation.
 - `evaluation.ece_bins`: Number of calibration bins.
 - `evaluation.ece_min_count`: Minimum samples per ECE bin.
+- `evaluation.ece_method`: ECE backend used for metrics and repeats:
+  `custom` (fixed-width bins), `adaptive` (in-repo equal-mass bins),
+  `smooth` (in-repo Gaussian-smoothed reliability), `adaptive_lib`
+  (pandas `qcut` equal-mass bins), or `smooth_lib` (SciPy
+  `gaussian_filter1d` smoothing).
+- `evaluation.ece_smooth_bandwidth`: Bandwidth for `smooth` ECE.
+- `evaluation.ece_smooth_grid_bins`: Histogram grid bins for `smooth` ECE.
 - `evaluation.small_prob_max`: Threshold for "small p" calibration.
 - `evaluation.small_prob_quantile`: Quantile fallback if no preds are
   below `small_prob_max`.
@@ -452,7 +459,8 @@ Optional repeated-run significance testing when training BCE + LE.
 - `repeats.per_condition_min_count`: Minimum condition sample count to
   include in per-condition calibration tests.
 - Repeated-run summaries include `ece_small` using
-  `evaluation.small_prob_max` / `evaluation.small_prob_quantile`.
+  `evaluation.small_prob_max` / `evaluation.small_prob_quantile`, and use
+  the configured `evaluation.ece_method` backend.
 
 Example: run 10 paired repeats and report Wilcoxon p-values:
 

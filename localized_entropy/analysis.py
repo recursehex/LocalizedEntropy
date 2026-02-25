@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy.ndimage import gaussian_filter1d
 import torch
 from torch.utils.data import DataLoader
 
@@ -258,13 +259,32 @@ def binary_classification_metrics(
     }
 
 
-def expected_calibration_error(
+def _normalize_ece_method(method: str) -> str:
+    """Normalize ECE method aliases to canonical names."""
+    text = str(method).strip().lower()
+    if text in {"custom", "fixed", "hist", "histogram", "ece"}:
+        return "custom"
+    if text in {"adaptive", "adaptive_ece", "adaptive-ece"}:
+        return "adaptive"
+    if text in {"adaptive_lib", "adaptive-lib", "adaptive_library", "adaptive-library"}:
+        return "adaptive_lib"
+    if text in {"smooth", "smooth_ece", "smooth-ece"}:
+        return "smooth"
+    if text in {"smooth_lib", "smooth-lib", "smooth_library", "smooth-library"}:
+        return "smooth_lib"
+    raise ValueError(
+        "Unsupported ECE method. Expected one of: "
+        "'custom', 'adaptive', 'smooth', 'adaptive_lib', 'smooth_lib'."
+    )
+
+
+def _expected_calibration_error_custom(
     preds: np.ndarray,
     labels: np.ndarray,
-    bins: int = 20,
-    min_count: int = 1,
+    bins: int,
+    min_count: int,
 ) -> Tuple[float, pd.DataFrame]:
-    """Compute ECE and return a per-bin calibration table."""
+    """Compute classic fixed-width histogram ECE."""
     p = np.asarray(preds, dtype=np.float64).reshape(-1)
     y = np.asarray(labels, dtype=np.float64).reshape(-1)
     edges = np.linspace(0.0, 1.0, bins + 1)
@@ -303,8 +323,312 @@ def expected_calibration_error(
                 "abs_gap": gap,
             }
         )
-    table = pd.DataFrame(rows)
+    table = pd.DataFrame(rows, columns=["bin", "count", "avg_pred", "avg_label", "abs_gap"])
     return float(ece), table
+
+
+def _expected_calibration_error_adaptive(
+    preds: np.ndarray,
+    labels: np.ndarray,
+    bins: int,
+    min_count: int,
+) -> Tuple[float, pd.DataFrame]:
+    """Compute adaptive ECE using equal-mass bins."""
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    total = p.size
+    if total == 0:
+        return float("nan"), pd.DataFrame(
+            columns=["bin", "count", "avg_pred", "avg_label", "abs_gap"]
+        )
+
+    order = np.argsort(p, kind="mergesort")
+    p_sorted = p[order]
+    y_sorted = y[order]
+    # Equal-mass bins by sorted rank; some bins can be empty when bins > n.
+    bounds = np.linspace(0, total, bins + 1, dtype=np.int64)
+
+    rows = []
+    ece = 0.0
+    for b in range(bins):
+        start = int(bounds[b])
+        end = int(bounds[b + 1])
+        count = max(0, end - start)
+        if count < min_count:
+            rows.append(
+                {
+                    "bin": b,
+                    "count": count,
+                    "avg_pred": np.nan,
+                    "avg_label": np.nan,
+                    "abs_gap": np.nan,
+                }
+            )
+            continue
+        p_bin = p_sorted[start:end]
+        y_bin = y_sorted[start:end]
+        avg_pred = float(p_bin.mean())
+        avg_label = float(y_bin.mean())
+        gap = abs(avg_pred - avg_label)
+        ece += (count / total) * gap
+        rows.append(
+            {
+                "bin": b,
+                "count": count,
+                "avg_pred": avg_pred,
+                "avg_label": avg_label,
+                "abs_gap": gap,
+            }
+        )
+    table = pd.DataFrame(rows, columns=["bin", "count", "avg_pred", "avg_label", "abs_gap"])
+    return float(ece), table
+
+
+def _expected_calibration_error_adaptive_lib(
+    preds: np.ndarray,
+    labels: np.ndarray,
+    bins: int,
+    min_count: int,
+) -> Tuple[float, pd.DataFrame]:
+    """Compute adaptive ECE using pandas qcut equal-frequency bins."""
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    total = p.size
+    if total == 0:
+        return float("nan"), pd.DataFrame(
+            columns=["bin", "count", "avg_pred", "avg_label", "abs_gap"]
+        )
+
+    n_bins = max(1, min(int(bins), int(total)))
+    bin_codes = pd.qcut(p, q=n_bins, labels=False, duplicates="drop")
+    bin_ids = np.asarray(bin_codes, dtype=np.float64)
+    if bin_ids.size == 0 or np.all(np.isnan(bin_ids)):
+        return float("nan"), pd.DataFrame(
+            columns=["bin", "count", "avg_pred", "avg_label", "abs_gap"]
+        )
+    bin_ids = bin_ids.astype(np.int64)
+    actual_bins = int(np.max(bin_ids)) + 1
+
+    rows = []
+    ece = 0.0
+    for b in range(max(int(bins), actual_bins)):
+        if b >= actual_bins:
+            rows.append(
+                {
+                    "bin": b,
+                    "count": 0,
+                    "avg_pred": np.nan,
+                    "avg_label": np.nan,
+                    "abs_gap": np.nan,
+                }
+            )
+            continue
+        mask = bin_ids == b
+        count = int(mask.sum())
+        if count < min_count:
+            rows.append(
+                {
+                    "bin": b,
+                    "count": count,
+                    "avg_pred": np.nan,
+                    "avg_label": np.nan,
+                    "abs_gap": np.nan,
+                }
+            )
+            continue
+        avg_pred = float(p[mask].mean())
+        avg_label = float(y[mask].mean())
+        gap = abs(avg_pred - avg_label)
+        ece += (count / total) * gap
+        rows.append(
+            {
+                "bin": b,
+                "count": count,
+                "avg_pred": avg_pred,
+                "avg_label": avg_label,
+                "abs_gap": gap,
+            }
+        )
+    table = pd.DataFrame(rows, columns=["bin", "count", "avg_pred", "avg_label", "abs_gap"])
+    return float(ece), table
+
+
+def _expected_calibration_error_smooth(
+    preds: np.ndarray,
+    labels: np.ndarray,
+    bins: int,
+    min_count: int,
+    smooth_bandwidth: float,
+    smooth_grid_bins: Optional[int],
+) -> Tuple[float, pd.DataFrame]:
+    """Compute Smooth ECE via Gaussian kernel smoothing over confidence bins."""
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    total = p.size
+    if total == 0:
+        return float("nan"), pd.DataFrame(
+            columns=["bin", "count", "avg_pred", "avg_label", "abs_gap"]
+        )
+
+    grid_bins = int(smooth_grid_bins) if smooth_grid_bins is not None else max(200, int(bins) * 10)
+    grid_bins = max(grid_bins, 2)
+    bw = max(float(smooth_bandwidth), 1e-6)
+
+    p_clip = np.clip(p, 0.0, 1.0)
+    hist_count, _ = np.histogram(p_clip, bins=grid_bins, range=(0.0, 1.0))
+    hist_pred, _ = np.histogram(p_clip, bins=grid_bins, range=(0.0, 1.0), weights=p_clip)
+    hist_label, _ = np.histogram(p_clip, bins=grid_bins, range=(0.0, 1.0), weights=y)
+
+    sigma_bins = max(bw * grid_bins, 1e-6)
+    radius = max(1, int(math.ceil(4.0 * sigma_bins)))
+    offsets = np.arange(-radius, radius + 1, dtype=np.float64)
+    kernel = np.exp(-0.5 * np.square(offsets / sigma_bins))
+    kernel = kernel / np.sum(kernel)
+
+    smooth_count = np.convolve(hist_count.astype(np.float64), kernel, mode="same")
+    smooth_pred = np.convolve(hist_pred.astype(np.float64), kernel, mode="same")
+    smooth_label = np.convolve(hist_label.astype(np.float64), kernel, mode="same")
+
+    avg_pred = np.divide(
+        smooth_pred,
+        smooth_count,
+        out=np.full(grid_bins, np.nan, dtype=np.float64),
+        where=smooth_count > 0.0,
+    )
+    avg_label = np.divide(
+        smooth_label,
+        smooth_count,
+        out=np.full(grid_bins, np.nan, dtype=np.float64),
+        where=smooth_count > 0.0,
+    )
+    abs_gap = np.abs(avg_pred - avg_label)
+    weights = hist_count.astype(np.float64) / max(1, total)
+
+    valid = (hist_count >= min_count) & np.isfinite(abs_gap)
+    ece = float(np.sum(weights[valid] * abs_gap[valid]))
+
+    table = pd.DataFrame(
+        {
+            "bin": np.arange(grid_bins, dtype=np.int64),
+            "count": hist_count.astype(np.int64),
+            "avg_pred": np.where(hist_count >= min_count, avg_pred, np.nan),
+            "avg_label": np.where(hist_count >= min_count, avg_label, np.nan),
+            "abs_gap": np.where(hist_count >= min_count, abs_gap, np.nan),
+        }
+    )
+    return float(ece), table
+
+
+def _expected_calibration_error_smooth_lib(
+    preds: np.ndarray,
+    labels: np.ndarray,
+    bins: int,
+    min_count: int,
+    smooth_bandwidth: float,
+    smooth_grid_bins: Optional[int],
+) -> Tuple[float, pd.DataFrame]:
+    """Compute Smooth ECE using scipy's gaussian_filter1d."""
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    total = p.size
+    if total == 0:
+        return float("nan"), pd.DataFrame(
+            columns=["bin", "count", "avg_pred", "avg_label", "abs_gap"]
+        )
+
+    grid_bins = int(smooth_grid_bins) if smooth_grid_bins is not None else max(200, int(bins) * 10)
+    grid_bins = max(grid_bins, 2)
+    bw = max(float(smooth_bandwidth), 1e-6)
+    sigma_bins = max(bw * grid_bins, 1e-6)
+
+    p_clip = np.clip(p, 0.0, 1.0)
+    hist_count, _ = np.histogram(p_clip, bins=grid_bins, range=(0.0, 1.0))
+    hist_pred, _ = np.histogram(p_clip, bins=grid_bins, range=(0.0, 1.0), weights=p_clip)
+    hist_label, _ = np.histogram(p_clip, bins=grid_bins, range=(0.0, 1.0), weights=y)
+
+    smooth_count = gaussian_filter1d(
+        hist_count.astype(np.float64),
+        sigma=sigma_bins,
+        mode="nearest",
+        truncate=4.0,
+    )
+    smooth_pred = gaussian_filter1d(
+        hist_pred.astype(np.float64),
+        sigma=sigma_bins,
+        mode="nearest",
+        truncate=4.0,
+    )
+    smooth_label = gaussian_filter1d(
+        hist_label.astype(np.float64),
+        sigma=sigma_bins,
+        mode="nearest",
+        truncate=4.0,
+    )
+
+    avg_pred = np.divide(
+        smooth_pred,
+        smooth_count,
+        out=np.full(grid_bins, np.nan, dtype=np.float64),
+        where=smooth_count > 0.0,
+    )
+    avg_label = np.divide(
+        smooth_label,
+        smooth_count,
+        out=np.full(grid_bins, np.nan, dtype=np.float64),
+        where=smooth_count > 0.0,
+    )
+    abs_gap = np.abs(avg_pred - avg_label)
+    weights = hist_count.astype(np.float64) / max(1, total)
+
+    valid = (hist_count >= min_count) & np.isfinite(abs_gap)
+    ece = float(np.sum(weights[valid] * abs_gap[valid]))
+
+    table = pd.DataFrame(
+        {
+            "bin": np.arange(grid_bins, dtype=np.int64),
+            "count": hist_count.astype(np.int64),
+            "avg_pred": np.where(hist_count >= min_count, avg_pred, np.nan),
+            "avg_label": np.where(hist_count >= min_count, avg_label, np.nan),
+            "abs_gap": np.where(hist_count >= min_count, abs_gap, np.nan),
+        }
+    )
+    return float(ece), table
+
+
+def expected_calibration_error(
+    preds: np.ndarray,
+    labels: np.ndarray,
+    bins: int = 20,
+    min_count: int = 1,
+    method: str = "custom",
+    smooth_bandwidth: float = 0.05,
+    smooth_grid_bins: Optional[int] = None,
+) -> Tuple[float, pd.DataFrame]:
+    """Compute ECE and return a per-bin calibration table."""
+    ece_method = _normalize_ece_method(method)
+    if ece_method == "custom":
+        return _expected_calibration_error_custom(preds, labels, bins=bins, min_count=min_count)
+    if ece_method == "adaptive":
+        return _expected_calibration_error_adaptive(preds, labels, bins=bins, min_count=min_count)
+    if ece_method == "adaptive_lib":
+        return _expected_calibration_error_adaptive_lib(preds, labels, bins=bins, min_count=min_count)
+    if ece_method == "smooth":
+        return _expected_calibration_error_smooth(
+            preds,
+            labels,
+            bins=bins,
+            min_count=min_count,
+            smooth_bandwidth=smooth_bandwidth,
+            smooth_grid_bins=smooth_grid_bins,
+        )
+    return _expected_calibration_error_smooth_lib(
+        preds,
+        labels,
+        bins=bins,
+        min_count=min_count,
+        smooth_bandwidth=smooth_bandwidth,
+        smooth_grid_bins=smooth_grid_bins,
+    )
 
 
 def per_condition_metrics(
@@ -314,6 +638,9 @@ def per_condition_metrics(
     bins: int = 20,
     min_count: int = 1,
     small_prob_max: float = 0.01,
+    ece_method: str = "custom",
+    ece_smooth_bandwidth: float = 0.05,
+    ece_smooth_grid_bins: Optional[int] = None,
     threshold: float = 0.5,
 ) -> pd.DataFrame:
     """Compute metrics per condition, including calibration and accuracy."""
@@ -332,7 +659,15 @@ def per_condition_metrics(
         y_c = y[mask]
         bce = bce_log_loss(p_c, y_c)
         cls_metrics = binary_classification_metrics(p_c, y_c, threshold=threshold)
-        ece, _ = expected_calibration_error(p_c, y_c, bins=bins, min_count=min_count)
+        ece, _ = expected_calibration_error(
+            p_c,
+            y_c,
+            bins=bins,
+            min_count=min_count,
+            method=ece_method,
+            smooth_bandwidth=ece_smooth_bandwidth,
+            smooth_grid_bins=ece_smooth_grid_bins,
+        )
         # Track calibration on low-probability predictions separately.
         small_mask = p_c <= small_prob_max
         if small_mask.any():
@@ -341,6 +676,9 @@ def per_condition_metrics(
                 y_c[small_mask],
                 bins=bins,
                 min_count=min_count,
+                method=ece_method,
+                smooth_bandwidth=ece_smooth_bandwidth,
+                smooth_grid_bins=ece_smooth_grid_bins,
             )
         else:
             ece_small = float("nan")
