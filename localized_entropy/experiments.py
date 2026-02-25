@@ -105,9 +105,10 @@ def resolve_eval_bundle(cfg, splits, loaders):
         print(f"[WARN] Unknown evaluation split '{eval_split}'; defaulting to 'eval'.")
         eval_split = "eval"
 
-    data_source = get_data_source(cfg)
-    test_labels_available = False
-    if data_source == "ctr":
+    has_test_label_flag = hasattr(splits, "test_labels_available")
+    test_labels_available = bool(getattr(splits, "test_labels_available", False))
+    if (not has_test_label_flag) and (get_data_source(cfg) == "ctr"):
+        # Backward-compatible fallback when splits metadata is unavailable.
         test_labels_available = bool(cfg.get("ctr", {}).get("test_has_labels", False))
 
     if eval_split == "train":

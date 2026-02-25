@@ -208,6 +208,9 @@ Example:
 ### data
 - `data.source`: `ctr` or `synthetic`.
 - `data.train_split`: Fraction of samples used for training.
+- `data.use_test_set`: If true, expose a test split/loader when available.
+  - CTR: uses `ctr.test_path` as test data.
+  - Synthetic: holds out `synthetic.test_split` from generated rows.
 - `data.standardize`: If true, standardize numeric features using train
   mean/std.
 - `data.standardize_eps`: Small std floor to avoid divide-by-zero.
@@ -330,6 +333,8 @@ These settings are used when `data.source` is `synthetic`.
 - `synthetic.num_conditions`: Number of synthetic conditions.
 - `synthetic.min_samples_per_condition` / `synthetic.max_samples_per_condition`:
   Samples per condition.
+- `synthetic.test_split`: Fraction of generated synthetic rows reserved
+  for the test split when `data.use_test_set=true` (must be in `[0, 1)`).
 - `synthetic.numeric_features`: Ordered list of numeric features to emit.
   Supported values: `age`, `net_worth`, `log10_net_worth`, and `noise`
   (or `noise_1`, `noise_2`, ...). Any `noise*` entries draw from
@@ -412,8 +417,10 @@ Example: small synthetic dataset with 4 conditions and 3 features:
 - `logging.print_loader_note`: Print DataLoader configuration summary.
 
 ### evaluation
-- `evaluation.use_test_labels`: If true and `ctr.test_has_labels`, use
-  test labels for metrics.
+- `evaluation.use_test_labels`: If true and test labels are available,
+  use test labels for metrics (`ctr.test_has_labels=true` for CTR;
+  synthetic test labels are available when `synthetic.test_split>0` and
+  `data.use_test_set=true`).
 - `evaluation.split`: `train`, `eval`, or `test` for evaluation.
 - `evaluation.ece_bins`: Number of calibration bins.
 - `evaluation.ece_min_count`: Minimum samples per ECE bin.

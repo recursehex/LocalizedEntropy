@@ -24,6 +24,7 @@ class DatasetSplits:
     y_train: np.ndarray
     y_eval: np.ndarray
     y_test: Optional[np.ndarray]
+    test_labels_available: bool
     c_train: np.ndarray
     c_eval: np.ndarray
     c_test: Optional[np.ndarray]
@@ -117,6 +118,30 @@ def _balance_indices_by_condition(
     keep_idx = np.concatenate(keep_idx)
     keep_idx = rng.permutation(keep_idx)
     return keep_idx, min_count, counts
+
+
+def _synthetic_test_partition(
+    n_total: int,
+    test_ratio: float,
+    seed: int,
+) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+    """Split synthetic indices into train/eval pool and optional test set."""
+    if n_total <= 0:
+        return np.empty((0,), dtype=np.int64), None
+    if test_ratio <= 0.0:
+        return np.arange(n_total, dtype=np.int64), None
+    if test_ratio >= 1.0:
+        raise ValueError("synthetic.test_split must be in [0, 1).")
+    n_test = int(np.floor(test_ratio * n_total))
+    if n_total > 1:
+        n_test = max(1, min(n_test, n_total - 1))
+    else:
+        n_test = 0
+    if n_test <= 0:
+        return np.arange(n_total, dtype=np.int64), None
+    rng = np.random.default_rng(seed)
+    idx = rng.permutation(n_total)
+    return idx[:-n_test], idx[-n_test:]
 
 
 def build_dataloaders(
@@ -259,6 +284,7 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool, use_mps: bool 
     train_ratio = float(data_cfg.get("train_split", 0.9))
     std_eps = float(data_cfg.get("standardize_eps", 1e-6))
     standardize = bool(data_cfg.get("standardize", True))
+    use_test_set = bool(data_cfg.get("use_test_set", True))
 
     plot_data = {}
     labels_test = None
@@ -281,6 +307,11 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool, use_mps: bool 
         num_conditions = arrays["num_conditions"]
         cat_sizes = arrays["cat_sizes"]
         cat_cols = arrays["cat_cols"]
+        if not use_test_set:
+            xnum_test = None
+            xcat_test = None
+            conds_test = None
+            labels_test = None
         balance_by_condition = bool(cfg.get("ctr", {}).get("balance_by_condition", False))
         plot_sample_size = int(cfg["ctr"].get("plot_sample_size", 0) or 0)
         if stats_df is not None:
@@ -302,18 +333,31 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool, use_mps: bool 
         labels = dataset["labels"]
         conds = dataset["conds"]
         probs = dataset["probs"]
+        plot_conds = conds
+        plot_probs = probs
         xnum_test = None
         xcat = np.empty((len(labels), 0), dtype=np.int64)
         xcat_test = None
         conds_test = None
+        synthetic_test_split = float(cfg.get("synthetic", {}).get("test_split", 0.0) or 0.0)
+        split_idx, test_idx = _synthetic_test_partition(len(labels), synthetic_test_split if use_test_set else 0.0, seed)
+        xnum_test = xnum[test_idx] if test_idx is not None else None
+        xcat_test = xcat[test_idx] if test_idx is not None else None
+        conds_test = conds[test_idx] if test_idx is not None else None
+        labels_test = labels[test_idx] if test_idx is not None else None
+        xnum = xnum[split_idx]
+        xcat = xcat[split_idx]
+        labels = labels[split_idx]
+        conds = conds[split_idx]
+        probs = probs[split_idx] if probs is not None else None
         num_conditions = dataset["num_conditions"]
         cat_sizes = []
         cat_cols = []
         plot_data["synthetic"] = {
             "net_worth": dataset["net_worth"],
             "ages": dataset["ages"],
-            "probs": probs,
-            "conds": conds,
+            "probs": plot_probs,
+            "conds": plot_conds,
             "num_conditions": num_conditions,
         }
     else:
@@ -401,9 +445,11 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool, use_mps: bool 
             }
 
     y_test = None
+    test_labels_available = False
     if xnum_test is not None:
         if labels_test is not None:
             y_test = labels_test
+            test_labels_available = True
         else:
             y_test = np.zeros((len(xnum_test),), dtype=np.float32)
     else:
@@ -442,6 +488,7 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool, use_mps: bool 
         y_train=y_train,
         y_eval=y_eval,
         y_test=y_test,
+        test_labels_available=test_labels_available,
         c_train=c_train,
         c_eval=c_eval,
         c_test=conds_test,

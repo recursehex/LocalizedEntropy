@@ -270,7 +270,8 @@
       "train_split": 0.9,
       "standardize": true,
       "standardize_eps": 1e-06,
-      "shuffle_test": true
+      "shuffle_test": true,
+      "use_test_set": true
     },
     "ctr": {
       "train_path": "data/train.csv",
@@ -336,6 +337,7 @@
       "num_conditions": 4,
       "min_samples_per_condition": 3000000,
       "max_samples_per_condition": 3000000,
+      "test_split": 0.1,
       "numeric_features": [
         "age",
         "net_worth",

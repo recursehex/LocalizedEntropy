@@ -47,6 +47,11 @@ Step-by-step pipeline:
     synthetic net-worth and age distributions per condition and
     converts to numeric features.
 - Training/eval split uses `train_split` with a deterministic RNG.
+- Test-set handling:
+  - `data.use_test_set=true` enables test-loader creation.
+  - CTR uses the configured `ctr.test_path` arrays as test data.
+  - Synthetic reserves `synthetic.test_split` of generated rows as test
+    data before the train/eval split is applied.
 - Optional per-condition balancing occurs when
   `ctr.balance_by_condition=true`.
 - Optional synthetic negative downsampling/weights are applied to the
@@ -177,6 +182,10 @@ Step-by-step pipeline:
 
 9) Post-training evaluation
 - Evaluates on the configured split (`evaluation.split`).
+- For `evaluation.split=test`, label-based metrics run only when
+  `evaluation.use_test_labels=true` and test labels are available
+  (CTR requires `ctr.test_has_labels=true`; synthetic test labels are
+  present when `synthetic.test_split>0` with `data.use_test_set=true`).
 - Empty eval loaders are handled safely: `evaluate()` returns
   `loss=nan` and an empty prediction array instead of raising.
 - Computes summary stats, histograms, and per-condition prediction
@@ -265,6 +274,9 @@ CTR source (`localized_entropy/data/ctr.py`):
 Synthetic source (`localized_entropy/data/synthetic.py`):
 - Generates net-worth and age distributions per condition.
 - Produces probability targets from a sigmoid + interest curve.
+- Optionally holds out a synthetic test set via `synthetic.test_split`
+  when `data.use_test_set=true`; the remaining rows are split into
+  train/eval via `data.train_split`.
 - Builds numeric features based on `synthetic.numeric_features`
   (supported values: `age`, `net_worth`, `log10_net_worth`, and
   `noise*`).
