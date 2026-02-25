@@ -427,6 +427,11 @@ def localized_entropy(
         den = ones * (-torch.log(pj)) + zeros * (-torch.log1p(-pj))
         class_term = num / den.clamp_min(eps)  # Normalize by base-rate CE_j.
 
+
+        # experimental adjustments for LE  uncomment line bellow
+        # class_term = class_term * 1.0 / (pj.item() * pj.item())
+        # class_term = class_term * np.fabs(np.log10(pj.item())) * np.fabs(np.log10(pj.item()))
+
         if condition_weights is not None:
             idx = cid.item()
             if 0 <= idx < condition_weights.numel():
@@ -445,6 +450,7 @@ def localized_entropy(
                 f"num={num.item():.6g} "
                 f"den={den.item():.6g} "
                 f"class_term={class_term.item():.6g} "
+                f"amplifier={np.fabs(np.log10(pj.item())):6g}"
                 f"total={total.item():.6g}"
             )
 
