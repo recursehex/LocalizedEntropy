@@ -410,11 +410,13 @@ Optional repeated-run significance testing when training BCE + LE.
 - `repeats.wilcoxon_alternative`: `alternative` hypothesis for
   `scipy.stats.wilcoxon`.
 - `repeats.per_condition_top_k`: Rows to print for per-condition
-  calibration tests.
+  calibration tests (`<=0` prints all conditions).
 - `repeats.per_condition_sort_by`: Sort key for per-condition calibration
   tests (`p_value`, `delta_mean`, `abs_delta_mean`, `count`, `base_rate`).
 - `repeats.per_condition_min_count`: Minimum condition sample count to
   include in per-condition calibration tests.
+- `repeats.per_condition_alpha`: Significance cutoff used to add a
+  per-condition boolean `significant` flag (`p_value < alpha`).
 - Repeated-run summaries include `ece_small` using
   `evaluation.small_prob_max` / `evaluation.small_prob_quantile`, and use
   the configured `evaluation.ece_method` backend.

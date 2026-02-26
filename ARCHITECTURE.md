@@ -225,7 +225,10 @@ Step-by-step pipeline:
   unstable failures.
 - If evaluation conditions are available, it also computes per-condition
   calibration Wilcoxon tests on absolute gaps between per-condition
-  prediction means and base rates.
+  prediction means and base rates, prints condition-level p-values, and
+  marks each condition with a boolean significance flag
+  (`p_value < repeats.per_condition_alpha`). Table output is controlled by
+  `repeats.per_condition_top_k` (`<=0` prints all conditions).
 
 11) Per-condition train vs eval rate diagnostics
 - `summarize_per_ad_train_eval_rates` compares per-condition
