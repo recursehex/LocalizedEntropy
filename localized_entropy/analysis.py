@@ -742,6 +742,46 @@ def per_condition_calibration(
     return df.sort_values("count", ascending=False)
 
 
+def per_condition_log_ratio_calibration_error(
+    preds: np.ndarray,
+    labels: np.ndarray,
+    conds: np.ndarray,
+    *,
+    eps: float = 1e-6,
+    min_count: int = 1,
+) -> tuple[float, float]:
+    """Compute |log((pred_mean+eps)/(base_rate+eps))| per condition, then return
+    (impression-weighted mean, macro mean) over conditions with count>=min_count."""
+    p = np.asarray(preds, dtype=np.float64).reshape(-1)
+    y = np.asarray(labels, dtype=np.float64).reshape(-1)
+    c = np.asarray(conds, dtype=np.int64).reshape(-1)
+    if p.size == 0 or y.size == 0 or c.size == 0:
+        return float("nan"), float("nan")
+    if p.size != y.size or p.size != c.size:
+        return float("nan"), float("nan")
+    if float(eps) <= 0.0:
+        raise ValueError("eps must be > 0 for log-ratio calibration error.")
+    if int(min_count) < 1:
+        raise ValueError("min_count must be >= 1 for per-condition calibration error.")
+
+    max_id = int(c.max())
+    counts = np.bincount(c, minlength=max_id + 1).astype(np.float64)
+    pred_sum = np.bincount(c, weights=p, minlength=max_id + 1)
+    label_sum = np.bincount(c, weights=y, minlength=max_id + 1)
+    denom = np.maximum(counts, 1.0)
+    pred_mean = pred_sum / denom
+    base_rate = label_sum / denom
+    log_gap = np.abs(np.log((pred_mean + float(eps)) / (base_rate + float(eps))))
+
+    valid = (counts >= int(min_count)) & np.isfinite(log_gap)
+    if not np.any(valid):
+        return float("nan"), float("nan")
+
+    weighted = float(np.sum(counts[valid] * log_gap[valid]) / np.sum(counts[valid]))
+    macro = float(np.mean(log_gap[valid]))
+    return weighted, macro
+
+
 def per_condition_mean(
     values: Optional[np.ndarray],
     conds: Optional[np.ndarray],

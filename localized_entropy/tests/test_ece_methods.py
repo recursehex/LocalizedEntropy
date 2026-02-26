@@ -2,8 +2,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from localized_entropy.analysis import expected_calibration_error, per_condition_metrics
-from localized_entropy.compare import build_wilcoxon_summary
+from localized_entropy.analysis import (
+    expected_calibration_error,
+    per_condition_log_ratio_calibration_error,
+    per_condition_metrics,
+)
+from localized_entropy.compare import build_wilcoxon_summary, summarize_model_metrics
 
 
 def test_expected_calibration_error_supports_all_methods():
@@ -90,3 +94,46 @@ def test_build_wilcoxon_summary_all_ties_returns_non_significant_result():
     assert len(summary) == 1
     assert summary.iloc[0]["n_nonzero"] == 0
     assert summary.iloc[0]["p_value"] == pytest.approx(1.0)
+
+
+def test_per_condition_log_ratio_calibration_error_returns_weighted_and_macro():
+    """Log-ratio per-condition calibration should provide both weighted and macro variants."""
+    preds = np.array([0.6, 0.4, 0.2], dtype=np.float64)
+    labels = np.array([1.0, 0.0, 1.0], dtype=np.float64)
+    conds = np.array([0, 0, 1], dtype=np.int64)
+
+    weighted, macro = per_condition_log_ratio_calibration_error(
+        preds,
+        labels,
+        conds,
+        eps=1e-6,
+        min_count=1,
+    )
+
+    gap_cond0 = abs(np.log((0.5 + 1e-6) / (0.5 + 1e-6)))
+    gap_cond1 = abs(np.log((0.2 + 1e-6) / (1.0 + 1e-6)))
+    expected_weighted = (2.0 * gap_cond0 + 1.0 * gap_cond1) / 3.0
+    expected_macro = (gap_cond0 + gap_cond1) / 2.0
+    assert weighted == pytest.approx(expected_weighted)
+    assert macro == pytest.approx(expected_macro)
+
+
+def test_summarize_model_metrics_includes_logratio_calibration_metrics():
+    """Model summary should expose per-condition log-ratio calibration metrics when conds are given."""
+    preds = np.array([0.6, 0.4, 0.2, 0.3], dtype=np.float64)
+    labels = np.array([1.0, 0.0, 1.0, 0.0], dtype=np.float64)
+    conds = np.array([0, 0, 1, 1], dtype=np.int64)
+
+    metrics = summarize_model_metrics(
+        preds,
+        labels,
+        eval_conds=conds,
+    )
+    assert "logratio_calib_iw" in metrics
+    assert "logratio_calib_macro" in metrics
+    assert np.isfinite(metrics["logratio_calib_iw"])
+    assert np.isfinite(metrics["logratio_calib_macro"])
+
+    metrics_no_conds = summarize_model_metrics(preds, labels, eval_conds=None)
+    assert np.isnan(metrics_no_conds["logratio_calib_iw"])
+    assert np.isnan(metrics_no_conds["logratio_calib_macro"])

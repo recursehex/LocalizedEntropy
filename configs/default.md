@@ -417,9 +417,11 @@ Optional repeated-run significance testing when training BCE + LE.
   include in per-condition calibration tests.
 - `repeats.per_condition_alpha`: Significance cutoff used to add a
   per-condition boolean `significant` flag (`p_value < alpha`).
-- Repeated-run summaries include `ece_small` using
-  `evaluation.small_prob_max` / `evaluation.small_prob_quantile`, and use
-  the configured `evaluation.ece_method` backend.
+- Repeated-run summaries include `ece_small` (using
+  `evaluation.small_prob_max` / `evaluation.small_prob_quantile`) plus
+  per-condition log-ratio calibration aggregates
+  (`logratio_calib_iw`, `logratio_calib_macro`), and use the configured
+  `evaluation.ece_method` backend.
 
 Example: run 10 paired repeats and report Wilcoxon p-values:
 

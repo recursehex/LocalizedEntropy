@@ -207,15 +207,18 @@ Step-by-step pipeline:
   comparison table (calibration ratios, per-condition BCE logloss for
   each run, plus LE ratio deltas) using `localized_entropy/compare.py`,
   printing an aligned text table plus a BCE-vs-LE summary (accuracy,
-  logloss, brier, ECE, with percent change vs BCE) and a per-condition
-  abs(1 - calibration) table for quick closeness-to-1 checks.
+  logloss, brier, ECE, and per-condition log-ratio calibration
+  aggregates (impression-weighted + macro, each with percent change vs
+  BCE) and a per-condition abs(1 - calibration) table for quick
+  closeness-to-1 checks.
   By default, comparison rows are sorted by per-condition base rate
   descending (`comparison.sort_by=base_rate`).
 
 10) Optional repeated-run significance testing
 - When `repeats.enabled=true`, the notebook re-trains BCE/LE across
   multiple seeds and computes paired Wilcoxon signed-rank tests over
-  logloss/brier/ece/ece_small/accuracy deltas to report p-values, with
+  logloss/brier/ece/ece_small/per-condition-log-ratio-calibration
+  (impression-weighted + macro)/accuracy deltas to report p-values, with
   `ece_small` focused on low-probability predictions.
 - Repeated-run ECE metrics use the same configured ECE backend as
   single-run evaluation (`evaluation.ece_method`).
@@ -320,6 +323,9 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
     (highest-to-lowest), with count as a tie-breaker.
   - Per-condition calibration ratios (pred mean / label mean) and helpers
     for LE ratio tables.
+  - Per-condition log-ratio calibration aggregates:
+    |log((pred_mean+eps)/(base_rate+eps))| reported as impression-weighted
+    and macro averages.
 - `localized_entropy/experiments.py`: experiment helpers for building
   models, resolving eval splits, and training single-loss runs.
 - `localized_entropy/compare.py`: per-condition BCE vs LE comparison

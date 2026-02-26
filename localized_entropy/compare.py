@@ -13,6 +13,7 @@ from localized_entropy.analysis import (
     collect_le_stats_per_condition,
     le_stats_to_frame,
     per_condition_calibration,
+    per_condition_log_ratio_calibration_error,
 )
 from localized_entropy.experiments import TrainRunResult
 from localized_entropy.training import GradSqStats
@@ -313,6 +314,7 @@ def summarize_model_metrics(
     preds: np.ndarray,
     labels: np.ndarray,
     *,
+    eval_conds: Optional[np.ndarray] = None,
     ece_bins: int = 20,
     ece_min_count: int = 1,
     ece_method: str = "custom",
@@ -321,6 +323,8 @@ def summarize_model_metrics(
     threshold: float = 0.5,
     small_prob_max: float = 0.01,
     small_prob_quantile: float = 0.1,
+    log_ratio_eps: float = 1e-6,
+    log_ratio_min_count: int = 1,
     include_threshold: bool = False,
 ) -> dict:
     """Compute a standard set of evaluation metrics from predictions."""
@@ -356,12 +360,24 @@ def summarize_model_metrics(
         )
     else:
         ece_small = float("nan")
+    logratio_calib_iw = float("nan")
+    logratio_calib_macro = float("nan")
+    if eval_conds is not None:
+        logratio_calib_iw, logratio_calib_macro = per_condition_log_ratio_calibration_error(
+            p,
+            y,
+            eval_conds,
+            eps=log_ratio_eps,
+            min_count=log_ratio_min_count,
+        )
     metrics = {
         "logloss": logloss,
         "brier": brier,
         "accuracy": acc,
         "ece": float(ece),
         "ece_small": float(ece_small),
+        "logratio_calib_iw": float(logratio_calib_iw),
+        "logratio_calib_macro": float(logratio_calib_macro),
     }
     if include_threshold:
         metrics["ece_small_threshold"] = float(small_threshold)
@@ -405,6 +421,8 @@ def format_bce_le_summary(
     threshold: float = 0.5,
     small_prob_max: float = 0.01,
     small_prob_quantile: float = 0.1,
+    log_ratio_eps: float = 1e-6,
+    log_ratio_min_count: int = 1,
     per_condition_min_count: int = 1,
 ) -> str:
     """Format a summary comparing BCE vs LE metrics."""
@@ -412,6 +430,7 @@ def format_bce_le_summary(
     bce_metrics = summarize_model_metrics(
         bce_result.eval_preds,
         labels,
+        eval_conds=eval_conds,
         ece_bins=ece_bins,
         ece_min_count=ece_min_count,
         ece_method=ece_method,
@@ -420,11 +439,14 @@ def format_bce_le_summary(
         threshold=threshold,
         small_prob_max=small_prob_max,
         small_prob_quantile=small_prob_quantile,
+        log_ratio_eps=log_ratio_eps,
+        log_ratio_min_count=log_ratio_min_count,
         include_threshold=True,
     )
     le_metrics = summarize_model_metrics(
         le_result.eval_preds,
         labels,
+        eval_conds=eval_conds,
         ece_bins=ece_bins,
         ece_min_count=ece_min_count,
         ece_method=ece_method,
@@ -433,6 +455,8 @@ def format_bce_le_summary(
         threshold=threshold,
         small_prob_max=small_prob_max,
         small_prob_quantile=small_prob_quantile,
+        log_ratio_eps=log_ratio_eps,
+        log_ratio_min_count=log_ratio_min_count,
         include_threshold=True,
     )
 
@@ -459,6 +483,16 @@ def format_bce_le_summary(
     ece_small_winner = _winner(
         bce_metrics["ece_small"],
         le_metrics["ece_small"],
+        lower_is_better=True,
+    )
+    logratio_iw_winner = _winner(
+        bce_metrics["logratio_calib_iw"],
+        le_metrics["logratio_calib_iw"],
+        lower_is_better=True,
+    )
+    logratio_macro_winner = _winner(
+        bce_metrics["logratio_calib_macro"],
+        le_metrics["logratio_calib_macro"],
         lower_is_better=True,
     )
 
@@ -520,6 +554,16 @@ def format_bce_le_summary(
         le_metrics["ece_small"],
         lower_is_better=True,
     )
+    logratio_iw_pct = pct_change(
+        bce_metrics["logratio_calib_iw"],
+        le_metrics["logratio_calib_iw"],
+        lower_is_better=True,
+    )
+    logratio_macro_pct = pct_change(
+        bce_metrics["logratio_calib_macro"],
+        le_metrics["logratio_calib_macro"],
+        lower_is_better=True,
+    )
     ece_method_label = str(ece_method).strip().lower()
     if ece_method_label in {"custom", "fixed", "hist", "histogram", "ece"}:
         ece_label = "ECE"
@@ -535,13 +579,20 @@ def format_bce_le_summary(
         ece_label = f"ECE ({ece_method})"
 
     lines = [
-        "BCE vs LE summary (lower is better for logloss/brier/ece):",
+        "BCE vs LE summary (lower is better for logloss/brier/ece/calibration):",
         f"Accuracy@0.5: BCE={fmt(bce_metrics['accuracy'])} | LE={fmt(le_metrics['accuracy'])} -> {acc_winner} (pct_change={acc_pct})",
         f"Logloss:       BCE={fmt(bce_metrics['logloss'])} | LE={fmt(le_metrics['logloss'])} -> {logloss_winner} (pct_change={logloss_pct})",
         f"Brier:         BCE={fmt(bce_metrics['brier'])} | LE={fmt(le_metrics['brier'])} -> {brier_winner} (pct_change={brier_pct})",
         f"{ece_label}:           BCE={fmt(bce_metrics['ece'])} | LE={fmt(le_metrics['ece'])} -> {ece_winner} (pct_change={ece_pct})",
         f"{ece_label} small{small_threshold_text}: BCE={fmt(bce_metrics['ece_small'])} | LE={fmt(le_metrics['ece_small'])} -> {ece_small_winner} (pct_change={ece_small_pct})",
     ]
+    if eval_conds is not None:
+        lines.extend(
+            [
+                f"Per-{condition_label} log-ratio calibration (impr-weighted): BCE={fmt(bce_metrics['logratio_calib_iw'])} | LE={fmt(le_metrics['logratio_calib_iw'])} -> {logratio_iw_winner} (pct_change={logratio_iw_pct})",
+                f"Per-{condition_label} log-ratio calibration (macro): BCE={fmt(bce_metrics['logratio_calib_macro'])} | LE={fmt(le_metrics['logratio_calib_macro'])} -> {logratio_macro_winner} (pct_change={logratio_macro_pct})",
+            ]
+        )
     if eval_conds is not None:
         closeness = summarize_per_condition_closeness(
             bce_result.eval_preds,
@@ -614,6 +665,8 @@ _DEFAULT_REPEAT_METRICS: Dict[str, bool] = {
     "brier": True,
     "ece": True,
     "ece_small": True,
+    "logratio_calib_iw": True,
+    "logratio_calib_macro": True,
     "accuracy": False,
 }
 
@@ -677,6 +730,7 @@ def build_repeat_metrics_frame(
     runs: List[TrainRunResult],
     eval_labels: np.ndarray,
     *,
+    eval_conds: Optional[np.ndarray] = None,
     ece_bins: int = 20,
     ece_min_count: int = 1,
     ece_method: str = "custom",
@@ -685,6 +739,8 @@ def build_repeat_metrics_frame(
     threshold: float = 0.5,
     small_prob_max: float = 0.01,
     small_prob_quantile: float = 0.1,
+    log_ratio_eps: float = 1e-6,
+    log_ratio_min_count: int = 1,
     run_label: str = "run",
     run_values: Optional[Iterable[int]] = None,
 ) -> pd.DataFrame:
@@ -702,6 +758,7 @@ def build_repeat_metrics_frame(
         metrics = summarize_model_metrics(
             result.eval_preds,
             labels,
+            eval_conds=eval_conds,
             ece_bins=ece_bins,
             ece_min_count=ece_min_count,
             ece_method=ece_method,
@@ -710,6 +767,8 @@ def build_repeat_metrics_frame(
             threshold=threshold,
             small_prob_max=small_prob_max,
             small_prob_quantile=small_prob_quantile,
+            log_ratio_eps=log_ratio_eps,
+            log_ratio_min_count=log_ratio_min_count,
         )
         rows.append(
             {
