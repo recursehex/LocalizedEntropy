@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Union, TextIO
 
-from localized_entropy.config import get_data_source
+from localized_entropy.config import get_data_source, get_training_source, resolve_ctr_config
 
 
 def _normalize_filter_mode(mode: Optional[str]) -> str:
@@ -61,7 +61,7 @@ def resolve_filter_mode(cfg: Dict) -> str:
     data_source = get_data_source(cfg)
     if data_source != "ctr":
         return "ids"
-    ctr_cfg = cfg.get("ctr", {})
+    ctr_cfg = resolve_ctr_config(cfg)
     filter_cfg = ctr_cfg.get("filter") or {}
     mode = filter_cfg.get("mode")
     if not mode:
@@ -86,7 +86,7 @@ def resolve_filter_mode(cfg: Dict) -> str:
 
 def build_output_dir(cfg: Dict, loss_mode: str, *, root: Union[Path, str] = "output") -> Path:
     """Build the base output directory for a run."""
-    data_source = get_data_source(cfg)
+    data_source = get_training_source(cfg)
     nn_type = resolve_nn_type(cfg)
     filter_mode = resolve_filter_mode(cfg)
     return Path(root) / resolve_loss_dir(loss_mode) / data_source / nn_type / filter_mode

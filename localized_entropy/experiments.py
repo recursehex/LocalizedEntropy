@@ -8,7 +8,12 @@ import torch
 from torch.utils.data import DataLoader
 
 from localized_entropy.analysis import collect_logits
-from localized_entropy.config import get_data_source, loss_label, resolve_training_cfg
+from localized_entropy.config import (
+    get_data_source,
+    loss_label,
+    resolve_ctr_config,
+    resolve_training_cfg,
+)
 from localized_entropy.data.pipeline import build_dataloaders
 from localized_entropy.models import ConditionedLogitMLP
 from localized_entropy.training import (
@@ -109,7 +114,7 @@ def resolve_eval_bundle(cfg, splits, loaders):
     test_labels_available = bool(getattr(splits, "test_labels_available", False))
     if (not has_test_label_flag) and (get_data_source(cfg) == "ctr"):
         # Backward-compatible fallback when splits metadata is unavailable.
-        test_labels_available = bool(cfg.get("ctr", {}).get("test_has_labels", False))
+        test_labels_available = bool(resolve_ctr_config(cfg).get("test_has_labels", False))
 
     if eval_split == "train":
         return "train", loaders.train_loader, splits.y_train, splits.c_train, "Train"

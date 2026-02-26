@@ -9,7 +9,7 @@ import pandas as pd
 import torch
 
 from localized_entropy.analysis import per_condition_calibration
-from localized_entropy.config import get_data_source, load_and_resolve
+from localized_entropy.config import get_data_source, load_and_resolve, resolve_ctr_config
 from localized_entropy.data.pipeline import prepare_data
 from localized_entropy.experiments import build_loss_loaders, build_model, train_single_loss
 from localized_entropy.training import compute_base_rates_from_loader, evaluate, predict_probs
@@ -85,7 +85,7 @@ def build_search_context(config_path: str) -> SearchContext:
 
     loss_loaders, le_train_cfg = build_loss_loaders(cfg, "localized_entropy", splits, device, use_cuda, use_mps)
     data_source = get_data_source(cfg)
-    test_has_labels = not (data_source == "ctr" and not bool(cfg.get("ctr", {}).get("test_has_labels", False)))
+    test_has_labels = not (data_source == "ctr" and not bool(resolve_ctr_config(cfg).get("test_has_labels", False)))
     if loss_loaders.test_loader is not None and splits.y_test is not None and test_has_labels:
         eval_loader = loss_loaders.test_loader
         eval_labels = np.asarray(splits.y_test).reshape(-1)

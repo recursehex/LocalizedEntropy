@@ -7,6 +7,30 @@ import pandas as pd
 from localized_entropy.utils import dedupe
 from localized_entropy.data.common import build_condition_encoder, encode_conditions
 
+_WARNED_ROOTS = set()
+
+
+def warn_if_root_csvs(data_root: Path | str = "data") -> None:
+    """Warn when CSV files exist directly under the data root."""
+    root = Path(data_root)
+    try:
+        marker = str(root.resolve())
+    except Exception:
+        marker = str(root)
+    if marker in _WARNED_ROOTS:
+        return
+    if not root.exists() or not root.is_dir():
+        return
+    csv_files = sorted(p.name for p in root.glob("*.csv") if p.is_file())
+    if not csv_files:
+        return
+    joined = ", ".join(csv_files)
+    print(
+        "[WARN] CSV files found directly under "
+        f"{root}: {joined}. Move them into data/avazu, data/criteo, or data/yambda."
+    )
+    _WARNED_ROOTS.add(marker)
+
 
 def _safe_nrows(read_rows: Optional[int]):
     """Normalize a row-limit parameter for pandas reads."""
@@ -450,8 +474,8 @@ def maybe_cache_filtered_ctr(ctr_cfg: Dict) -> None:
     filter_cfg["col"] = filter_col
     ctr_cfg["filter"] = filter_cfg
 
-    train_out = Path(cache_cfg.get("train_path", "data/train_filtered.csv"))
-    test_out = Path(cache_cfg.get("test_path", "data/test_filtered.csv"))
+    train_out = Path(cache_cfg.get("train_path", str(train_in.parent / "train_filtered.csv")))
+    test_out = Path(cache_cfg.get("test_path", str(test_in.parent / "test_filtered.csv")))
     overwrite = bool(cache_cfg.get("overwrite", False))
 
     if overwrite or not train_out.exists():

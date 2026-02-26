@@ -20,18 +20,19 @@ Step-by-step pipeline:
   `configs/default.json`.
 - Per-loss `training.by_loss` overrides are resolved when each loss is
   trained (BCE vs LE), including `by_source` settings nested under each
-  loss for the active data source.
+  loss for the active source key (`synthetic` or active CTR dataset key such as `avazu`, `criteo`, `yambda`).
 - Chooses CUDA vs MPS vs CPU via `localized_entropy/utils.py` and
   `device.use_mps` in the config; when MPS is explicitly disabled, the
   notebook builds models with float64 on CPU.
 
 2) Optional CTR filtering + caching (config-driven)
-- `localized_entropy/data/ctr.py` applies `ctr.filter` (or legacy
-  `ctr.filter_col`/`ctr.filter_top_k`) to select a subset of conditions
+- `localized_entropy/data/ctr.py` applies
+  `ctr.datasets.<active>.filter` (or legacy
+  `ctr.datasets.<active>.filter_col`/`filter_top_k`) to select a subset of conditions
   by id list, by top/bottom-k ranking on impressions/click-rate stats,
   or by a mixed-rate profile (`top_count_rate_mix`: top-count pool with
   high/mid/low rate picks).
-- If `ctr.filter.cache.enabled` is true, the pipeline writes filtered
+- If `ctr.datasets.<active>.filter.cache.enabled` is true, the pipeline writes filtered
   CSVs to disk before loading, reducing memory pressure for large
   datasets.
 - Filter stats are computed from the filtered training data and passed
@@ -49,11 +50,11 @@ Step-by-step pipeline:
 - Training/eval split uses `train_split` with a deterministic RNG.
 - Test-set handling:
   - `data.use_test_set=true` enables test-loader creation.
-  - CTR uses the configured `ctr.test_path` arrays as test data.
+  - CTR uses `ctr.datasets.<data.ctr_dataset>.test_path` as test data.
   - Synthetic reserves `synthetic.test_split` of generated rows as test
     data before the train/eval split is applied.
 - Optional per-condition balancing occurs when
-  `ctr.balance_by_condition=true`.
+  `ctr.datasets.<active>.balance_by_condition=true`.
 - Optional synthetic negative downsampling/weights are applied to the
   training split when `synthetic.reweighting.enabled=true` (evaluation
   splits remain unweighted). This path is DEPRECATAED and prints a
@@ -184,7 +185,7 @@ Step-by-step pipeline:
 - Evaluates on the configured split (`evaluation.split`).
 - For `evaluation.split=test`, label-based metrics run only when
   `evaluation.use_test_labels=true` and test labels are available
-  (CTR requires `ctr.test_has_labels=true`; synthetic test labels are
+  (CTR requires `ctr.datasets.<active>.test_has_labels=true`; synthetic test labels are
   present when `synthetic.test_split>0` with `data.use_test_set=true`).
 - Empty eval loaders are handled safely: `evaluate()` returns
   `loss=nan` and an empty prediction array instead of raising.
@@ -244,15 +245,19 @@ Step-by-step pipeline:
 ## Data pipeline details
 
 CTR source (`localized_entropy/data/ctr.py`):
-- Reads CSV columns from config (`ctr.*`).
+- Resolves active dataset config from `data.ctr_dataset` (or `ctr.dataset`)
+  and merges `ctr.defaults` + `ctr.datasets.<active>`.
+- Warns if CSV files are found directly under `data/` instead of dataset
+  subfolders (`data/avazu`, `data/criteo`, `data/yambda`) when
+  `ctr.warn_root_csv=true`.
 - Optional on-disk cache:
-  - When `ctr.filter.cache.enabled=true`, filtered train/test CSVs are
+  - When `ctr.datasets.<active>.filter.cache.enabled=true`, filtered train/test CSVs are
     generated in streaming chunks and paths are updated for loading.
 - Optional preprocessing:
   - `derived_time`: extract day-of-week and hour features.
   - `device_counters`: add capped counts for device_ip/device_id.
 - Optional filtering:
-  - Uses `ctr.filter` (or legacy `filter_col`/`filter_top_k`) to keep
+  - Uses `ctr.datasets.<active>.filter` (or legacy `filter_col`/`filter_top_k`) to keep
     specific condition ids, top/bottom-k by impressions/click rate, or
     a mixed subset from a top-count candidate pool
     (`top_count_rate_mix`).
@@ -266,7 +271,7 @@ CTR source (`localized_entropy/data/ctr.py`):
   - Numeric feature matrix `xnum`.
   - Categorical feature matrix `xcat`.
   - Labels, conditions, and optional test labels.
-  - Note: `ctr.weight_col` is currently ignored; net-worth arrays are not
+  - Note: `ctr.datasets.<active>.weight_col` is currently ignored; net-worth arrays are not
     included in the training loaders.
   - `num_conditions` set from the max encoded condition across train/test
     (unused "other" buckets are trimmed).
@@ -330,7 +335,8 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
 - Outputs are shown inline in the notebook, and `localized_entropy.ipynb`
   now saves key plots plus text logs under `output/` via
   `localized_entropy/outputs.py`.
-- Output folder structure: `output/{bce|le}/{ctr|synthetic}/{nn_type}/{filter_mode}/`
+- Output folder structure:
+  `output/{bce|le|focal}/{avazu|criteo|yambda|synthetic}/{nn_type}/{filter_mode}/`
   with `avg.png`, `loss.png`, `preds.png`, `calibration.png`, and
   `notebook_output.txt`.
 

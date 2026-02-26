@@ -50,11 +50,65 @@ def get_data_source(cfg: Dict[str, Any]) -> str:
     return cfg.get("data", {}).get("source", "synthetic").lower().strip()
 
 
+def get_ctr_dataset_name(cfg: Dict[str, Any]) -> str:
+    """Return the active CTR dataset key."""
+    data_dataset = cfg.get("data", {}).get("ctr_dataset")
+    ctr_dataset = cfg.get("ctr", {}).get("dataset")
+    dataset = data_dataset if data_dataset is not None else ctr_dataset
+    if dataset is None:
+        dataset = "avazu"
+    return str(dataset).lower().strip()
+
+
+def resolve_ctr_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve CTR config with optional per-dataset overrides."""
+    ctr_cfg = cfg.get("ctr")
+    if not isinstance(ctr_cfg, dict):
+        return {}
+
+    dataset = get_ctr_dataset_name(cfg)
+    datasets_cfg = ctr_cfg.get("datasets")
+    if not isinstance(datasets_cfg, dict):
+        resolved = deepcopy(ctr_cfg)
+        resolved["dataset_name"] = dataset
+        return resolved
+
+    defaults = ctr_cfg.get("defaults")
+    root_overrides = {
+        key: deepcopy(value)
+        for key, value in ctr_cfg.items()
+        if key not in {"datasets", "defaults", "dataset"}
+    }
+
+    resolved: Dict[str, Any] = {}
+    if isinstance(defaults, dict):
+        resolved = _deep_update(resolved, deepcopy(defaults))
+    resolved = _deep_update(resolved, root_overrides)
+
+    dataset_overrides = datasets_cfg.get(dataset)
+    if dataset_overrides is None:
+        known = ", ".join(sorted(str(k) for k in datasets_cfg.keys()))
+        raise KeyError(f"Unknown CTR dataset '{dataset}'. Known: {known}")
+    if not isinstance(dataset_overrides, dict):
+        raise TypeError(f"ctr.datasets.{dataset} must be an object.")
+    resolved = _deep_update(resolved, deepcopy(dataset_overrides))
+    resolved["dataset_name"] = dataset
+    return resolved
+
+
+def get_training_source(cfg: Dict[str, Any]) -> str:
+    """Return source key used for per-loss/per-source training overrides."""
+    source = get_data_source(cfg)
+    if source == "ctr":
+        return get_ctr_dataset_name(cfg)
+    return source
+
+
 def get_condition_label(cfg: Dict[str, Any]) -> str:
     """Return a display label for condition IDs."""
     source = get_data_source(cfg)
     if source == "ctr":
-        return cfg.get("ctr", {}).get("condition_col", "Condition")
+        return resolve_ctr_config(cfg).get("condition_col", "Condition")
     return "Condition"
 
 
@@ -167,8 +221,14 @@ def resolve_training_cfg(cfg: Dict[str, Any], loss_mode: Optional[str] = None) -
                 if not isinstance(value, dict):
                     continue
                 normalized_sources[str(key).lower().strip()] = value
-            source = get_data_source(cfg)
-            source_cfg = normalized_sources.get(source)
-            if source_cfg:
-                resolved = _deep_update(resolved, source_cfg)
+            training_source = get_training_source(cfg)
+            source_candidates = [training_source]
+            base_source = get_data_source(cfg)
+            if base_source not in source_candidates:
+                source_candidates.append(base_source)
+            for source in source_candidates:
+                source_cfg = normalized_sources.get(source)
+                if source_cfg:
+                    resolved = _deep_update(resolved, source_cfg)
+                    break
     return resolved

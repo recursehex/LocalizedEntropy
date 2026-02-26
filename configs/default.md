@@ -34,9 +34,9 @@ Template model definitions included in `configs/default.json`:
 - `small_net`: Smaller MLP + smaller embeddings.
 - `wide_net`: Wider MLP with fewer layers.
 - `large_net`: Wider + deeper MLP with larger embeddings.
-- `ctr_top10_ads_by_count`: Sets `data.source=ctr`; keeps top 10 ads by impression count.
-- `ctr_top50_ads_by_count`: Sets `data.source=ctr`; keeps top 50 ads by impression count.
-- `ctr_top200_count_median_mix_30`: Sets `data.source=ctr`; from the top 200 ads by count,
+- `avazu_top10_ads_by_count`: Sets `data.source=ctr` with `data.ctr_dataset=avazu`; keeps top 10 ads by impression count.
+- `avazu_top50_ads_by_count`: Sets `data.source=ctr` with `data.ctr_dataset=avazu`; keeps top 50 ads by impression count.
+- `avazu_top200_count_median_mix_30`: Sets `data.source=ctr` with `data.ctr_dataset=avazu`; from the top 200 ads by count,
   selects 10 high-mean, 10 median-band, and 10 low-mean ads.
 
 ## Settings reference
@@ -111,7 +111,8 @@ Template model definitions included in `configs/default.json`:
   `localized_entropy` (`le` is accepted), or `focal`. Values in this block
   override the top-level training fields and apply independently per loss mode.
 - `training.by_loss.<loss>.by_source`: Optional per-dataset overrides
-  keyed by `data.source` (`ctr` or `synthetic`). These apply after the
+  keyed by source key (`synthetic`, or CTR dataset key such as `avazu`,
+  `criteo`, `yambda`; legacy `ctr` is also accepted). These apply after the
   per-loss overrides to select hyperparameters for a specific loss +
   data source combination.
 
@@ -126,7 +127,7 @@ Example:
   "by_loss": {
     "bce": {
       "by_source": {
-        "ctr": {
+        "avazu": {
           "epochs": 2,
           "batch_size": 10000
         },
@@ -138,7 +139,7 @@ Example:
     },
     "focal": {
       "by_source": {
-        "ctr": {
+        "avazu": {
           "epochs": 2,
           "batch_size": 10000
         },
@@ -150,7 +151,7 @@ Example:
     },
     "localized_entropy": {
       "by_source": {
-        "ctr": {
+        "avazu": {
           "epochs": 4,
           "batch_size": 20000,
           "lr": 0.001,
@@ -207,9 +208,11 @@ Example:
 
 ### data
 - `data.source`: `ctr` or `synthetic`.
+- `data.ctr_dataset`: Active CTR dataset key when `data.source=ctr`
+  (`avazu`, `criteo`, or `yambda`).
 - `data.train_split`: Fraction of samples used for training.
 - `data.use_test_set`: If true, expose a test split/loader when available.
-  - CTR: uses `ctr.test_path` as test data.
+  - CTR: uses `ctr.datasets.<data.ctr_dataset>.test_path` as test data.
   - Synthetic: holds out `synthetic.test_split` from generated rows.
 - `data.standardize`: If true, standardize numeric features using train
   mean/std.
@@ -219,113 +222,59 @@ Example:
 ### ctr
 These settings are used when `data.source` is `ctr`.
 
-- `ctr.train_path` / `ctr.test_path`: CSV paths.
-- `ctr.read_rows`: Max rows to read (null/0 = all rows; default null).
-- `ctr.numeric_cols`: Numeric feature columns.
-- `ctr.categorical_cols`: Categorical feature columns.
-- `ctr.categorical_max_values`: Cap per categorical vocab (top-k + other).
-- `ctr.derived_time`: Derive `wd` and `wd_hour` from `hour`.
-- `ctr.device_counters`: Add capped device_id/device_ip counts.
-- `ctr.device_counter_cap`: Cap for device counters.
-- `ctr.condition_col`: Condition column (e.g., ad id).
-- `ctr.label_col`: Label column (binary click).
-- `ctr.weight_col`: Optional weight column (currently unused; reserved for future weighting).
-- `ctr.max_conditions`: Cap condition vocab; others map to a single id.
-- `ctr.filter`: Optional filtering block for selecting a subset of values.
-  - `ctr.filter.enabled`: Enable filtering (default true if the block is set).
-  - `ctr.filter.mode`: `ids`, `top_k`, `bottom_k`, `top_count_rate_mix`, or `none`.
-  - `ctr.filter.col`: Column to filter (defaults to `condition_col`).
-- `ctr.filter.ids`: List of values to keep (mode `ids`).
-- `ctr.filter.k`: Number of values to keep (top/bottom-k modes).
-- `ctr.filter.metric`: `count` (impressions), `mean` (click rate), or `median`.
-- `ctr.filter.order`: Optional override for sort order (`asc`/`desc`).
-- `ctr.filter.min_count`: Optional min count threshold before ranking.
-- `ctr.filter.preselect_k`: For `top_count_rate_mix`, size of the top-count candidate pool (default 200).
-- `ctr.filter.high_k`: For `top_count_rate_mix`, number of highest-mean ads to keep (default 10).
-- `ctr.filter.middle_k` / `ctr.filter.mid_k`: For `top_count_rate_mix`, number of median-band ads to keep (default 10).
-- `ctr.filter.low_k`: For `top_count_rate_mix`, number of lowest-mean ads to keep (default 10).
-- `ctr.filter.apply_to_test`: Apply the same filter to the test set.
-- `ctr.filter.cache`: Optional on-disk cache for filtered CSVs.
-  - `ctr.filter.cache.enabled`: If true, write filtered CSVs before load.
-  - `ctr.filter.cache.train_path`: Output train CSV path.
-  - `ctr.filter.cache.test_path`: Output test CSV path.
-  - `ctr.filter.cache.overwrite`: If true, regenerate cached CSVs.
-  - `ctr.filter.cache.chunksize`: Chunk size for streaming filter pass.
-- `ctr.filter_col`: Legacy top-k filter column (still supported).
-- `ctr.filter_top_k`: Legacy top-k values to keep (0/empty = disabled).
-- `ctr.drop_na`: Drop rows with NA in selected columns.
-- `ctr.plot_filter_stats`: If true, show filter stats plot.
-- `ctr.filter_test`: Legacy toggle for applying filters to the test set
-  when `ctr.filter.apply_to_test` is unset.
-- `ctr.test_has_labels`: If true, treat test CSV as labeled.
-- `ctr.plot_sample_size`: Sample size for distribution plots (0 = off).
-- `ctr.balance_by_condition`: If true, downsample training to the
-  minimum condition count.
+- `ctr.dataset`: Default CTR dataset key if `data.ctr_dataset` is unset.
+- `ctr.warn_root_csv`: If true, print a warning when CSV files are found
+  directly under `data/` instead of dataset subfolders.
+- `ctr.data_root`: Root folder scanned for misplaced root-level CSVs.
+- `ctr.defaults`: Shared defaults applied to all CTR datasets.
+- `ctr.datasets.<name>`: Per-dataset overrides (for `avazu`, `criteo`,
+  `yambda`) merged on top of `ctr.defaults`.
+- `ctr.datasets.<name>.train_path` / `test_path`: Dataset-specific CSV paths.
+- `ctr.datasets.<name>.numeric_cols`: Numeric feature columns.
+- `ctr.datasets.<name>.categorical_cols`: Categorical feature columns.
+- `ctr.datasets.<name>.categorical_max_values`: Cap per categorical vocab
+  (top-k + other).
+- `ctr.datasets.<name>.derived_time`: Derive `wd` and `wd_hour` from `hour`.
+- `ctr.datasets.<name>.device_counters`: Add capped device_id/device_ip counts.
+- `ctr.datasets.<name>.device_counter_cap`: Cap for device counters.
+- `ctr.datasets.<name>.condition_col`: Condition column (for example ad id).
+- `ctr.datasets.<name>.label_col`: Label column (binary click).
+- `ctr.datasets.<name>.weight_col`: Optional weight column (currently unused).
+- `ctr.datasets.<name>.max_conditions`: Cap condition vocab; others map to an `other` ID.
+- `ctr.datasets.<name>.filter`: Optional filtering block (`ids`, `top_k`,
+  `bottom_k`, `top_count_rate_mix`, or `none`), including optional cache paths.
+- `ctr.datasets.<name>.filter_col` / `filter_top_k`: Legacy filtering keys (still supported).
+- `ctr.datasets.<name>.drop_na`: Drop rows with NA in selected columns.
+- `ctr.datasets.<name>.plot_filter_stats`: Show filter stats plot.
+- `ctr.datasets.<name>.filter_test`: Legacy toggle for applying filters to test when
+  `filter.apply_to_test` is unset.
+- `ctr.datasets.<name>.test_has_labels`: If true, treat test CSV as labeled.
+- `ctr.datasets.<name>.plot_sample_size`: Sample size for distribution plots.
+- `ctr.datasets.<name>.balance_by_condition`: If true, downsample training
+  to the minimum condition count.
 
-Example: keep the top 50 ads by impressions and balance the training set:
+Example: switch to Criteo and set dataset-specific filtering:
 
 ```json
+"data": {
+  "source": "ctr",
+  "ctr_dataset": "criteo"
+},
 "ctr": {
-  "filter": {
-    "mode": "top_k",
-    "col": "C14",
-    "k": 50,
-    "metric": "count"
-  },
-  "balance_by_condition": true
-}
-```
-
-Example: keep the bottom 10 ads by click rate (mean) with at least 1,000
-impressions:
-
-```json
-"ctr": {
-  "filter": {
-    "mode": "bottom_k",
-    "col": "C14",
-    "k": 10,
-    "metric": "mean",
-    "min_count": 1000
-  }
-}
-```
-
-Example: keep a fixed list of ad ids (mirrors the default config):
-
-```json
-"ctr": {
-  "filter": {
-    "mode": "ids",
-    "col": "C14",
-    "ids": [20093, 21768, 21191],
-    "cache": {
-      "enabled": true,
-      "train_path": "data/train_filtered.csv",
-      "test_path": "data/test_filtered.csv"
+  "datasets": {
+    "criteo": {
+      "condition_col": "C1",
+      "filter": {
+        "enabled": false,
+        "mode": "none"
+      }
     }
   }
 }
 ```
 
-Example: top 200 ads by count, then select a 30-ad mixed-rate set
-(10 high-mean, 10 median-band, 10 low-mean):
-
-```json
-"ctr": {
-  "filter": {
-    "mode": "top_count_rate_mix",
-    "col": "C14",
-    "preselect_k": 200,
-    "high_k": 10,
-    "middle_k": 10,
-    "low_k": 10
-  }
-}
-```
-
-Note: when `ctr.filter.cache.enabled=true`, the data pipeline writes
-filtered CSVs before loading to reduce memory usage.
+Note: when `ctr.datasets.<name>.filter.cache.enabled=true`, the data
+pipeline writes filtered CSVs before loading to reduce memory usage.
 
 ### synthetic
 These settings are used when `data.source` is `synthetic`.
@@ -418,7 +367,8 @@ Example: small synthetic dataset with 4 conditions and 3 features:
 
 ### evaluation
 - `evaluation.use_test_labels`: If true and test labels are available,
-  use test labels for metrics (`ctr.test_has_labels=true` for CTR;
+  use test labels for metrics (`ctr.datasets.<active>.test_has_labels=true`
+  for CTR;
   synthetic test labels are available when `synthetic.test_split>0` and
   `data.use_test_set=true`).
 - `evaluation.split`: `train`, `eval`, or `test` for evaluation.

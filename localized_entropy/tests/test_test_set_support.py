@@ -39,6 +39,7 @@ def _small_ctr_cfg(tmp_path: Path, *, use_test_set: bool, test_has_labels: bool)
     cfg = load_and_resolve(str(CONFIG_PATH))
     cfg = deepcopy(cfg)
     cfg["data"]["source"] = "ctr"
+    cfg["data"]["ctr_dataset"] = "avazu"
     cfg["data"]["train_split"] = 0.8
     cfg["data"]["standardize"] = False
     cfg["data"]["shuffle_test"] = False
@@ -49,24 +50,26 @@ def _small_ctr_cfg(tmp_path: Path, *, use_test_set: bool, test_has_labels: bool)
 
     cfg["training"]["batch_size"] = 4
 
-    cfg["ctr"]["train_path"] = str(tmp_path / "train.csv")
-    cfg["ctr"]["test_path"] = str(tmp_path / "test.csv")
-    cfg["ctr"]["read_rows"] = None
-    cfg["ctr"]["numeric_cols"] = ["num"]
-    cfg["ctr"]["categorical_cols"] = ["feature"]
-    cfg["ctr"]["categorical_max_values"] = None
-    cfg["ctr"]["derived_time"] = False
-    cfg["ctr"]["device_counters"] = False
-    cfg["ctr"]["condition_col"] = "ad"
-    cfg["ctr"]["label_col"] = "click"
-    cfg["ctr"]["max_conditions"] = None
-    cfg["ctr"]["drop_na"] = True
-    cfg["ctr"]["test_has_labels"] = test_has_labels
-    cfg["ctr"]["plot_sample_size"] = 0
-    cfg["ctr"]["balance_by_condition"] = False
-    cfg["ctr"]["filter"] = {"enabled": False, "mode": "none"}
-    cfg["ctr"]["filter_col"] = None
-    cfg["ctr"]["filter_top_k"] = 0
+    cfg["ctr"]["warn_root_csv"] = False
+    dataset_cfg = cfg["ctr"]["datasets"]["avazu"]
+    dataset_cfg["train_path"] = str(tmp_path / "train.csv")
+    dataset_cfg["test_path"] = str(tmp_path / "test.csv")
+    dataset_cfg["read_rows"] = None
+    dataset_cfg["numeric_cols"] = ["num"]
+    dataset_cfg["categorical_cols"] = ["feature"]
+    dataset_cfg["categorical_max_values"] = None
+    dataset_cfg["derived_time"] = False
+    dataset_cfg["device_counters"] = False
+    dataset_cfg["condition_col"] = "ad"
+    dataset_cfg["label_col"] = "click"
+    dataset_cfg["max_conditions"] = None
+    dataset_cfg["drop_na"] = True
+    dataset_cfg["test_has_labels"] = test_has_labels
+    dataset_cfg["plot_sample_size"] = 0
+    dataset_cfg["balance_by_condition"] = False
+    dataset_cfg["filter"] = {"enabled": False, "mode": "none"}
+    dataset_cfg["filter_col"] = None
+    dataset_cfg["filter_top_k"] = 0
     return cfg
 
 

@@ -37,7 +37,8 @@ The notebook stays small and delegates everything to the modules in `localized_e
   - `active` selects an experiment profile.
   - `definitions` holds per-experiment overrides (e.g., `bce_baseline`, `small_net`).
 - `data.source`: `"ctr"` or `"synthetic"`.
-- `ctr` section: file paths, numeric feature columns, condition column, filtering rules, and preprocessing flags.
+- `data.ctr_dataset`: active CTR dataset key (`"avazu"`, `"criteo"`, `"yambda"`).
+- `ctr` section: shared defaults plus per-dataset blocks under `ctr.datasets.<name>`.
 - `synthetic` section: number of conditions, sample counts, parameter ranges, `numeric_features`, and optional uniform log10 settings (`uniform_log10_means`, `uniform_log10_std`).
 - `model`: hidden sizes, embedding dimension, activation/norm, dropout.
 - `training`: epochs, learning rates (`lr`, optional `lr_category`), LR decays, batch size, loss mode, and loss comparisons.
@@ -48,11 +49,18 @@ The notebook stays small and delegates everything to the modules in `localized_e
 - Normalization uses training-set mean/std for both real and synthetic data to keep scaling consistent.
 - For Avazu CTR experiments, `C14` is treated as the ad identifier ("ad id") for conditioning and per-ad analysis.
 - To change the number of input features:
-  - For CTR, edit `ctr.numeric_cols`.
+  - For CTR, edit `ctr.datasets.<active_dataset>.numeric_cols` where
+    `<active_dataset>` is the value in `data.ctr_dataset`.
   - For synthetic, edit `synthetic.numeric_features` (append `noise` entries for Gaussian noise features).
-- CTR filtering is applied in `localized_entropy/data/ctr.py` via `ctr.filter` (id lists or top/bottom-k by impressions or click rate).
-- If `ctr.filter.cache.enabled` is true, the pipeline writes filtered CSVs to disk before loading to reduce memory use.
-- CTR distribution plots use a sample size from `ctr.plot_sample_size` and toggles in `plots.ctr_data_distributions` and `plots.ctr_label_rates`. Set `plots.ctr_use_density` to `true` if you want density curves instead of counts.
+- CTR filtering is applied in `localized_entropy/data/ctr.py` via
+  `ctr.datasets.<active_dataset>.filter` (id lists or top/bottom-k by
+  impressions or click rate).
+- If `ctr.datasets.<active_dataset>.filter.cache.enabled` is true, the
+  pipeline writes filtered CSVs to disk before loading to reduce memory use.
+- CTR distribution plots use a sample size from
+  `ctr.datasets.<active_dataset>.plot_sample_size` and toggles in
+  `plots.ctr_data_distributions` / `plots.ctr_label_rates`. Set
+  `plots.ctr_use_density` to `true` if you want density curves instead of counts.
 
 ## What The Model Trains On
 - Each training example is a tuple `(x_num, x_cat, c, y, w)`:
@@ -87,10 +95,15 @@ The notebook stays small and delegates everything to the modules in `localized_e
 - Current experiment wiring enables `lr_category` / `lr_zero_after_epochs` for synthetic + LE runs in the repeated-loss experiment helper.
 
 ## Data sources
-- Real data currently uses the Avazu CTR dataset from Kaggle located in `data/`. The repo does not distribute the dataset.
+- Real CTR data is organized under dataset-specific folders:
+  - `data/avazu/`
+  - `data/criteo/`
+  - `data/yambda/`
+- The active CTR dataset is selected by `data.ctr_dataset` in `configs/default.json`.
+- Real data currently defaults to Avazu CTR data. The repo does not distribute datasets.
   - The Avazu dataset comes as `.gz` files, convert them to `.csv` with `gunzip -c NAME.gz > NAME.csv`
   - It should be structured like this:
-    - `data/train.csv` - training data with the following fields:
+    - `data/avazu/train.csv` - training data with the following fields:
       - `id`: ad identifier
       - `click`: 0/1 for non-click/click
       - `hour`: format is YYMMDDHH, so 14091123 means 23:00 on Sept. 11, 2014 UTC.
@@ -108,7 +121,8 @@ The notebook stays small and delegates everything to the modules in `localized_e
       - `device_type`
       - `device_conn_type`
       - `C14-C21`: anonymized categorical variables
-    - `data/test.csv` - test data with the same structure.
+    - `data/avazu/test.csv` - test data with the same structure.
+- If CSV files remain directly under `data/` (not a subfolder), the CTR loader prints a warning.
 - Synthetic data is generated with log-normal net-worth and age features, plus optional extra numeric features.
 
 ## Outputs and evaluation

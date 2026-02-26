@@ -80,70 +80,85 @@
             "dropout": 0.35
           }
         },
-        "ctr_top10_ads_by_count": {
+        "avazu_top10_ads_by_count": {
           "data": {
-            "source": "ctr"
+            "source": "ctr",
+            "ctr_dataset": "avazu"
           },
           "ctr": {
-            "filter": {
-              "enabled": true,
-              "mode": "top_k",
-              "col": "C14",
-              "ids": [],
-              "k": 10,
-              "metric": "count",
-              "apply_to_test": true,
-              "cache": {
-                "enabled": true,
-                "train_path": "data/train_filtered_top10_count.csv",
-                "test_path": "data/test_filtered_top10_count.csv",
-                "overwrite": true
+            "datasets": {
+              "avazu": {
+                "filter": {
+                  "enabled": true,
+                  "mode": "top_k",
+                  "col": "C14",
+                  "ids": [],
+                  "k": 10,
+                  "metric": "count",
+                  "apply_to_test": true,
+                  "cache": {
+                    "enabled": true,
+                    "train_path": "data/avazu/train_filtered_top10_count.csv",
+                    "test_path": "data/avazu/test_filtered_top10_count.csv",
+                    "overwrite": true
+                  }
+                }
               }
             }
           }
         },
-        "ctr_top50_ads_by_count": {
+        "avazu_top50_ads_by_count": {
           "data": {
-            "source": "ctr"
+            "source": "ctr",
+            "ctr_dataset": "avazu"
           },
           "ctr": {
-            "filter": {
-              "enabled": true,
-              "mode": "top_k",
-              "col": "C14",
-              "ids": [],
-              "k": 50,
-              "metric": "count",
-              "apply_to_test": true,
-              "cache": {
-                "enabled": true,
-                "train_path": "data/train_filtered_top50_count.csv",
-                "test_path": "data/test_filtered_top50_count.csv",
-                "overwrite": true
+            "datasets": {
+              "avazu": {
+                "filter": {
+                  "enabled": true,
+                  "mode": "top_k",
+                  "col": "C14",
+                  "ids": [],
+                  "k": 50,
+                  "metric": "count",
+                  "apply_to_test": true,
+                  "cache": {
+                    "enabled": true,
+                    "train_path": "data/avazu/train_filtered_top50_count.csv",
+                    "test_path": "data/avazu/test_filtered_top50_count.csv",
+                    "overwrite": true
+                  }
+                }
               }
             }
           }
         },
-        "ctr_top200_count_median_mix_30": {
+        "avazu_top200_count_median_mix_30": {
           "data": {
-            "source": "ctr"
+            "source": "ctr",
+            "ctr_dataset": "avazu"
           },
           "ctr": {
-            "filter": {
-              "enabled": true,
-              "mode": "top_count_rate_mix",
-              "col": "C14",
-              "ids": [],
-              "preselect_k": 200,
-              "high_k": 10,
-              "middle_k": 10,
-              "low_k": 10,
-              "apply_to_test": true,
-              "cache": {
-                "enabled": true,
-                "train_path": "data/train_filtered_top200_mix30.csv",
-                "test_path": "data/test_filtered_top200_mix30.csv",
-                "overwrite": true
+            "datasets": {
+              "avazu": {
+                "filter": {
+                  "enabled": true,
+                  "mode": "top_count_rate_mix",
+                  "col": "C14",
+                  "ids": [],
+                  "preselect_k": 200,
+                  "high_k": 10,
+                  "middle_k": 10,
+                  "low_k": 10,
+                  "apply_to_test": true,
+                  "cache": {
+                    "enabled": true,
+                    "train_path": "data/avazu/train_filtered_top200_mix30.csv",
+                    "test_path": "data/avazu/test_filtered_top200_mix30.csv",
+                    "overwrite": true
+                  }
+                }
               }
             }
           }
@@ -180,7 +195,23 @@
       "by_loss": {
         "bce": {
           "by_source": {
-            "ctr": {
+            "avazu": {
+              "epochs": 5,
+              "lr": 0.001,
+              "lr_category": null,
+              "lr_zero_after_epochs": null,
+              "batch_size": 25000,
+              "eval_every_n_batches": 0
+            },
+            "criteo": {
+              "epochs": 5,
+              "lr": 0.001,
+              "lr_category": null,
+              "lr_zero_after_epochs": null,
+              "batch_size": 25000,
+              "eval_every_n_batches": 0
+            },
+            "yambda": {
               "epochs": 5,
               "lr": 0.001,
               "lr_category": null,
@@ -200,7 +231,35 @@
         },
         "localized_entropy": {
           "by_source": {
-            "ctr": {
+            "avazu": {
+              "epochs": 5,
+              "lr": 0.01,
+              "lr_decay": 0.999,
+              "lr_category_decay": 0.9999,
+              "lr_category": null,
+              "lr_zero_after_epochs": null,
+              "batch_size": 25000,
+              "eval_every_n_batches": 0,
+              "cross_batch": {
+                "enabled": true,
+                "amplification_rate": 50.0
+              }
+            },
+            "criteo": {
+              "epochs": 5,
+              "lr": 0.01,
+              "lr_decay": 0.999,
+              "lr_category_decay": 0.9999,
+              "lr_category": null,
+              "lr_zero_after_epochs": null,
+              "batch_size": 25000,
+              "eval_every_n_batches": 0,
+              "cross_batch": {
+                "enabled": true,
+                "amplification_rate": 50.0
+              }
+            },
+            "yambda": {
               "epochs": 5,
               "lr": 0.01,
               "lr_decay": 0.999,
@@ -232,7 +291,23 @@
         },
         "focal": {
           "by_source": {
-            "ctr": {
+            "avazu": {
+              "epochs": 3,
+              "lr": 0.001,
+              "lr_category": null,
+              "lr_zero_after_epochs": null,
+              "batch_size": 25000,
+              "eval_every_n_batches": 0
+            },
+            "criteo": {
+              "epochs": 3,
+              "lr": 0.001,
+              "lr_category": null,
+              "lr_zero_after_epochs": null,
+              "batch_size": 25000,
+              "eval_every_n_batches": 0
+            },
+            "yambda": {
               "epochs": 3,
               "lr": 0.001,
               "lr_category": null,
@@ -267,6 +342,7 @@
     },
     "data": {
       "source": "ctr",
+      "ctr_dataset": "avazu",
       "train_split": 0.9,
       "standardize": true,
       "standardize_eps": 1e-06,
@@ -274,64 +350,163 @@
       "use_test_set": true
     },
     "ctr": {
-      "train_path": "data/train.csv",
-      "test_path": "data/test.csv",
-      "read_rows": null,
-      "numeric_cols": [],
-      "categorical_cols": [
-        "C1",
-        "hour",
-        "banner_pos",
-        "device_type",
-        "device_conn_type",
-        "site_id",
-        "site_domain",
-        "app_id",
-        "app_domain",
-        "app_category",
-        "device_id",
-        "device_model",
-        "C14",
-        "C15",
-        "C16",
-        "C17",
-        "C18",
-        "C19",
-        "C20",
-        "C21"
-      ],
-      "categorical_max_values": 1000,
-      "derived_time": true,
-      "device_counters": true,
-      "device_counter_cap": 8,
-      "condition_col": "C14",
-      "label_col": "click",
-      "weight_col": null,
-      "max_conditions": 50,
-      "filter": {
-        "enabled": true,
-        "mode": "ids",
-        "col": "C14",
-        "ids": [
-          20093,
-          21768,
-          21191
-        ],
-        "cache": {
-          "enabled": true,
-          "train_path": "data/train_filtered.csv",
-          "test_path": "data/test_filtered.csv",
-          "overwrite": false
-        }
-      },
-      "filter_col": null,
-      "filter_top_k": 0,
-      "drop_na": true,
+      "dataset": "avazu",
+      "warn_root_csv": true,
+      "data_root": "data",
       "plot_filter_stats": true,
-      "filter_test": true,
-      "test_has_labels": false,
-      "plot_sample_size": 200000,
-      "balance_by_condition": true
+      "defaults": {
+        "read_rows": null,
+        "numeric_cols": [],
+        "categorical_cols": [],
+        "categorical_max_values": 1000,
+        "derived_time": false,
+        "device_counters": false,
+        "device_counter_cap": 8,
+        "condition_col": "Condition",
+        "label_col": "click",
+        "weight_col": null,
+        "max_conditions": 50,
+        "filter": {
+          "enabled": false,
+          "mode": "none",
+          "cache": {
+            "enabled": false,
+            "overwrite": false
+          }
+        },
+        "filter_col": null,
+        "filter_top_k": 0,
+        "drop_na": true,
+        "plot_filter_stats": true,
+        "filter_test": true,
+        "test_has_labels": false,
+        "plot_sample_size": 200000,
+        "balance_by_condition": false
+      },
+      "datasets": {
+        "avazu": {
+          "train_path": "data/avazu/train.csv",
+          "test_path": "data/avazu/test.csv",
+          "numeric_cols": [],
+          "categorical_cols": [
+            "C1",
+            "hour",
+            "banner_pos",
+            "device_type",
+            "device_conn_type",
+            "site_id",
+            "site_domain",
+            "app_id",
+            "app_domain",
+            "app_category",
+            "device_id",
+            "device_model",
+            "C14",
+            "C15",
+            "C16",
+            "C17",
+            "C18",
+            "C19",
+            "C20",
+            "C21"
+          ],
+          "derived_time": true,
+          "device_counters": true,
+          "condition_col": "C14",
+          "filter": {
+            "enabled": true,
+            "mode": "ids",
+            "col": "C14",
+            "ids": [
+              20093,
+              21768,
+              21191
+            ],
+            "cache": {
+              "enabled": true,
+              "train_path": "data/avazu/train_filtered.csv",
+              "test_path": "data/avazu/test_filtered.csv",
+              "overwrite": false
+            }
+          },
+          "balance_by_condition": true
+        },
+        "criteo": {
+          "train_path": "data/criteo/train.csv",
+          "test_path": "data/criteo/test.csv",
+          "numeric_cols": [
+            "I1",
+            "I2",
+            "I3",
+            "I4",
+            "I5",
+            "I6",
+            "I7",
+            "I8",
+            "I9",
+            "I10",
+            "I11",
+            "I12",
+            "I13"
+          ],
+          "categorical_cols": [
+            "C1",
+            "C2",
+            "C3",
+            "C4",
+            "C5",
+            "C6",
+            "C7",
+            "C8",
+            "C9",
+            "C10",
+            "C11",
+            "C12",
+            "C13",
+            "C14",
+            "C15",
+            "C16",
+            "C17",
+            "C18",
+            "C19",
+            "C20",
+            "C21",
+            "C22",
+            "C23",
+            "C24",
+            "C25",
+            "C26"
+          ],
+          "condition_col": "C1",
+          "filter": {
+            "enabled": false,
+            "mode": "none",
+            "cache": {
+              "enabled": false,
+              "train_path": "data/criteo/train_filtered.csv",
+              "test_path": "data/criteo/test_filtered.csv",
+              "overwrite": false
+            }
+          }
+        },
+        "yambda": {
+          "train_path": "data/yambda/train.csv",
+          "test_path": "data/yambda/test.csv",
+          "numeric_cols": [],
+          "categorical_cols": [],
+          "condition_col": "Condition",
+          "filter": {
+            "enabled": false,
+            "mode": "none",
+            "cache": {
+              "enabled": false,
+              "train_path": "data/yambda/train_filtered.csv",
+              "test_path": "data/yambda/test_filtered.csv",
+              "overwrite": false
+            }
+          }
+        }
+      }
     },
     "synthetic": {
       "num_conditions": 4,

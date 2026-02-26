@@ -6,8 +6,14 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from localized_entropy.config import resolve_ctr_config
 from localized_entropy.data.common import standardize_features, train_eval_split
-from localized_entropy.data.ctr import build_ctr_arrays, load_ctr_frames, maybe_cache_filtered_ctr
+from localized_entropy.data.ctr import (
+    build_ctr_arrays,
+    load_ctr_frames,
+    maybe_cache_filtered_ctr,
+    warn_if_root_csvs,
+)
 from localized_entropy.data.datasets import ConditionDataset, TensorBatchLoader
 from localized_entropy.data.synthetic import build_features, compute_negative_reweighting, make_dataset
 from localized_entropy.utils import is_notebook
@@ -291,9 +297,13 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool, use_mps: bool 
     plot_sample_size = 0
     balance_by_condition = False
     if source == "ctr":
-        maybe_cache_filtered_ctr(cfg["ctr"])
-        train_df, test_df, stats_df, top_values = load_ctr_frames(cfg["ctr"])
-        arrays = build_ctr_arrays(train_df, test_df, cfg["ctr"])
+        ctr_cfg = resolve_ctr_config(cfg)
+        if bool(ctr_cfg.get("warn_root_csv", True)):
+            data_root = ctr_cfg.get("data_root", "data")
+            warn_if_root_csvs(data_root)
+        maybe_cache_filtered_ctr(ctr_cfg)
+        train_df, test_df, stats_df, top_values = load_ctr_frames(ctr_cfg)
+        arrays = build_ctr_arrays(train_df, test_df, ctr_cfg)
         xnum = arrays["xnum"]
         xcat = arrays["xcat"]
         labels = arrays["labels"]
@@ -312,13 +322,13 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool, use_mps: bool 
             xcat_test = None
             conds_test = None
             labels_test = None
-        balance_by_condition = bool(cfg.get("ctr", {}).get("balance_by_condition", False))
-        plot_sample_size = int(cfg["ctr"].get("plot_sample_size", 0) or 0)
+        balance_by_condition = bool(ctr_cfg.get("balance_by_condition", False))
+        plot_sample_size = int(ctr_cfg.get("plot_sample_size", 0) or 0)
         if stats_df is not None:
             filter_label = (
-                cfg.get("ctr", {}).get("filter", {}).get("col")
-                or cfg.get("ctr", {}).get("filter_col")
-                or cfg.get("ctr", {}).get("condition_col")
+                ctr_cfg.get("filter", {}).get("col")
+                or ctr_cfg.get("filter_col")
+                or ctr_cfg.get("condition_col")
             )
             plot_data["ctr_stats"] = {
                 "stats_df": stats_df,
