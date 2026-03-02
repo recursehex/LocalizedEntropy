@@ -1,15 +1,22 @@
+import os
 from typing import Iterable, List
 
 import numpy as np
 import torch
 
 
-def set_seed(seed: int, use_cuda: bool) -> None:
+def set_seed(seed: int, use_cuda: bool, deterministic_cuda: bool = False) -> None:
     """Seed NumPy and PyTorch RNGs (including CUDA when enabled)."""
     np.random.seed(seed)
     torch.manual_seed(seed)
     if use_cuda:
         torch.cuda.manual_seed_all(seed)
+    if use_cuda:
+        torch.backends.cudnn.deterministic = bool(deterministic_cuda)
+        torch.backends.cudnn.benchmark = not bool(deterministic_cuda)
+        if deterministic_cuda:
+            os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    torch.use_deterministic_algorithms(bool(use_cuda and deterministic_cuda))
 
 
 def dedupe(seq: Iterable) -> List:
@@ -35,7 +42,7 @@ def is_notebook() -> bool:
         return False
 
 
-def init_device(verbose: bool = True, use_mps: bool = True):
+def init_device(verbose: bool = True, use_mps: bool = True, deterministic_cuda: bool = False):
     """Initialize CUDA/MPS/CPU device selection and non_blocking flag."""
     use_cuda = torch.cuda.is_available()
     mps_available = bool(getattr(torch.backends, "mps", None)) and torch.backends.mps.is_available()
@@ -48,10 +55,16 @@ def init_device(verbose: bool = True, use_mps: bool = True):
         device = torch.device("cpu")
     non_blocking = device.type == "cuda"
     if use_cuda:
+        deterministic_cuda = bool(deterministic_cuda)
+        torch.backends.cudnn.deterministic = deterministic_cuda
+        torch.backends.cudnn.benchmark = not deterministic_cuda
+        if deterministic_cuda:
+            os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+        torch.use_deterministic_algorithms(deterministic_cuda)
         if verbose:
             gpu_name = torch.cuda.get_device_name(device)
-            print(f"Using CUDA device: {gpu_name}")
-        torch.backends.cudnn.benchmark = True
+            mode = "deterministic" if deterministic_cuda else "benchmark"
+            print(f"Using CUDA device: {gpu_name} ({mode} mode).")
     elif use_mps:
         if verbose:
             print("Using MPS device (Apple Silicon GPU).")

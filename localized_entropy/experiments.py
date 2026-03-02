@@ -373,7 +373,11 @@ def run_repeated_loss_experiments(
     results: Dict[str, List[TrainRunResult]] = {loss_mode: [] for loss_mode in loss_modes}
     for seed in seeds:
         for loss_mode in loss_modes:
-            set_seed(int(seed), use_cuda)
+            set_seed(
+                int(seed),
+                use_cuda,
+                deterministic_cuda=bool(cfg.get("device", {}).get("deterministic_cuda", False)),
+            )
             model = build_model(cfg, splits, device, dtype=model_dtype)
             loss_bundle = per_loss[loss_mode]
             train_cfg = loss_bundle["train_cfg"]

@@ -149,11 +149,15 @@ def collect_all_data_metrics(
 def build_search_context(config_path: str) -> SearchContext:
     cfg = load_and_resolve(config_path)
     device_cfg = cfg.get("device", {})
-    device, use_cuda, use_mps, non_blocking = init_device(use_mps=bool(device_cfg.get("use_mps", True)))
+    deterministic_cuda = bool(device_cfg.get("deterministic_cuda", False))
+    device, use_cuda, use_mps, non_blocking = init_device(
+        use_mps=bool(device_cfg.get("use_mps", True)),
+        deterministic_cuda=deterministic_cuda,
+    )
     cpu_float64 = device.type == "cpu" and not bool(device_cfg.get("use_mps", True))
     model_dtype = torch.float64 if cpu_float64 else torch.float32
 
-    set_seed(int(cfg["project"]["seed"]), use_cuda)
+    set_seed(int(cfg["project"]["seed"]), use_cuda, deterministic_cuda=deterministic_cuda)
     prepared = prepare_data(cfg, device, use_cuda, use_mps)
     splits = prepared.splits
 
@@ -240,7 +244,11 @@ def run_le_hyper_search(
         train_params = default_le_train_params(ctx)
         apply_params(cfg_run, train_params, params)
 
-        set_seed(int(cfg_run["project"]["seed"]), ctx.use_cuda)
+        set_seed(
+            int(cfg_run["project"]["seed"]),
+            ctx.use_cuda,
+            deterministic_cuda=bool(cfg_run.get("device", {}).get("deterministic_cuda", False)),
+        )
         model = build_model(cfg_run, ctx.splits, ctx.device, dtype=ctx.model_dtype)
         record_payload = record_params(params)
 

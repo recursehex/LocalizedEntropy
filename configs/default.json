@@ -165,12 +165,13 @@
         }
       }
     },
-    "device": {
-      "use_mps": true,
-      "move_dataset_to_cuda": true,
-      "allow_dataloader_workers": false,
-      "num_workers_env": "LOCALIZED_ENTROPY_NUM_WORKERS"
-    },
+  "device": {
+    "use_mps": true,
+    "deterministic_cuda": false,
+    "move_dataset_to_cuda": true,
+    "allow_dataloader_workers": false,
+    "num_workers_env": "LOCALIZED_ENTROPY_NUM_WORKERS"
+  },
     "training": {
       "epochs": 5,
       "lr": 0.001,
