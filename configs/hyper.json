@@ -405,21 +405,20 @@
         "condition_col": "C14",
         "filter": {
           "enabled": true,
-          "mode": "ids",
+          "mode": "top_k",
           "col": "C14",
-          "ids": [
-            20093,
-            21768,
-            21191
-          ],
+          "ids": [],
+          "k": 50,
+          "metric": "count",
+          "apply_to_test": true,
           "cache": {
             "enabled": true,
-            "train_path": "data/avazu/train_filtered.csv",
-            "test_path": "data/avazu/test_filtered.csv",
-            "overwrite": false
+            "train_path": "data/avazu/train_filtered_top50_count.csv",
+            "test_path": "data/avazu/test_filtered_top50_count.csv",
+            "overwrite": true
           }
         },
-        "balance_by_condition": true
+        "balance_by_condition": false
       },
       "criteo": {
         "train_path": "data/criteo/train.csv",
@@ -511,9 +510,9 @@
     "condition_mode": "uniform",
     "uniform_log10_means": [
       -2.0,
-      -2.3,
-      -2.6,
-      -4.0
+      -2.1,
+      -2.2,
+      -2.3
     ],
     "uniform_log10_std": 0.6,
     "use_true_base_rates_for_le": true,

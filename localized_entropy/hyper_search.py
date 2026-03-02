@@ -8,7 +8,12 @@ import numpy as np
 import pandas as pd
 import torch
 
-from localized_entropy.analysis import per_condition_calibration
+from localized_entropy.analysis import (
+    expected_calibration_error,
+    per_condition_calibration,
+    per_condition_log_ratio_calibration_error,
+    per_condition_metrics,
+)
 from localized_entropy.config import get_data_source, load_and_resolve, resolve_ctr_config
 from localized_entropy.data.pipeline import prepare_data
 from localized_entropy.experiments import build_loss_loaders, build_model, train_single_loss
@@ -52,6 +57,7 @@ def _global_calibration_ratio(preds: np.ndarray, labels: np.ndarray, eps: float 
 
 
 def collect_all_data_metrics(
+    cfg: dict,
     model: torch.nn.Module,
     *,
     eval_loader: Any,
@@ -59,7 +65,7 @@ def collect_all_data_metrics(
     eval_conds: np.ndarray,
     device: torch.device,
     non_blocking: bool,
-) -> tuple[float, pd.DataFrame]:
+) -> tuple[dict, pd.DataFrame]:
     eval_preds = predict_probs(model, eval_loader, device, non_blocking=non_blocking)
     eval_preds = np.asarray(eval_preds, dtype=np.float64).reshape(-1)
     if eval_preds.shape[0] != eval_labels.shape[0] or eval_preds.shape[0] != eval_conds.shape[0]:
@@ -68,8 +74,76 @@ def collect_all_data_metrics(
             f"labels={eval_labels.shape[0]} conds={eval_conds.shape[0]}"
         )
     global_calibration = _global_calibration_ratio(eval_preds, eval_labels)
-    per_cond = per_condition_calibration(eval_preds, eval_labels, eval_conds)
-    return global_calibration, per_cond
+    global_calibration_error = float(abs(global_calibration - 1.0)) if np.isfinite(global_calibration) else float("nan")
+
+    eval_cfg = cfg.get("evaluation", {}) if isinstance(cfg, dict) else {}
+    ece_bins = int(eval_cfg.get("ece_bins", 20))
+    ece_min_count = int(eval_cfg.get("ece_min_count", 1))
+    ece_method = str(eval_cfg.get("ece_method", "custom"))
+    ece_smooth_bandwidth = float(eval_cfg.get("ece_smooth_bandwidth", 0.05))
+    ece_smooth_grid_bins = eval_cfg.get("ece_smooth_grid_bins")
+    if ece_smooth_grid_bins is not None:
+        ece_smooth_grid_bins = int(ece_smooth_grid_bins)
+    small_prob_max = float(eval_cfg.get("small_prob_max", 0.01))
+
+    ece, _ = expected_calibration_error(
+        eval_preds,
+        eval_labels,
+        bins=ece_bins,
+        min_count=ece_min_count,
+        method=ece_method,
+        smooth_bandwidth=ece_smooth_bandwidth,
+        smooth_grid_bins=ece_smooth_grid_bins,
+    )
+    small_mask = eval_preds <= small_prob_max
+    if np.any(small_mask):
+        ece_small, _ = expected_calibration_error(
+            eval_preds[small_mask],
+            eval_labels[small_mask],
+            bins=ece_bins,
+            min_count=ece_min_count,
+            method=ece_method,
+            smooth_bandwidth=ece_smooth_bandwidth,
+            smooth_grid_bins=ece_smooth_grid_bins,
+        )
+    else:
+        ece_small = float("nan")
+
+    per_cond_ratio = per_condition_calibration(eval_preds, eval_labels, eval_conds)
+    per_cond_extra = per_condition_metrics(
+        eval_preds,
+        eval_labels,
+        eval_conds,
+        bins=ece_bins,
+        min_count=ece_min_count,
+        small_prob_max=small_prob_max,
+        ece_method=ece_method,
+        ece_smooth_bandwidth=ece_smooth_bandwidth,
+        ece_smooth_grid_bins=ece_smooth_grid_bins,
+    )
+    per_cond = per_cond_ratio.merge(
+        per_cond_extra[["condition", "ece", "ece_small"]],
+        on="condition",
+        how="left",
+    )
+    per_cond["calibration_abs_error"] = np.abs(per_cond["calibration"] - 1.0)
+
+    per_cond_calibration_error, per_cond_calibration_error_macro = per_condition_log_ratio_calibration_error(
+        eval_preds,
+        eval_labels,
+        eval_conds,
+        min_count=1,
+    )
+    metrics = {
+        "global_calibration": float(global_calibration),
+        "global_calibration_error": float(global_calibration_error),
+        "ece": float(ece),
+        "ece_small": float(ece_small),
+        "per_condition_calibration_error": float(per_cond_calibration_error),
+        "per_condition_calibration_error_macro": float(per_cond_calibration_error_macro),
+        "small_prob_max": float(small_prob_max),
+    }
+    return metrics, per_cond
 
 
 def build_search_context(config_path: str) -> SearchContext:
@@ -179,7 +253,8 @@ def run_le_hyper_search(
                 base_rates=ctx.base_rates_train,
                 non_blocking=ctx.non_blocking,
             )
-            global_calibration, per_cond_df = collect_all_data_metrics(
+            metrics, per_cond_df = collect_all_data_metrics(
+                cfg_run,
                 model,
                 eval_loader=ctx.eval_loader,
                 eval_labels=ctx.eval_labels,
@@ -192,7 +267,13 @@ def run_le_hyper_search(
                 {
                     "epoch": int(epoch),
                     "test_le": float(le_loss),
-                    "global_calibration": float(global_calibration),
+                    "global_calibration": float(metrics["global_calibration"]),
+                    "global_calibration_error": float(metrics["global_calibration_error"]),
+                    "ece": float(metrics["ece"]),
+                    "ece_small": float(metrics["ece_small"]),
+                    "per_condition_calibration_error": float(metrics["per_condition_calibration_error"]),
+                    "per_condition_calibration_error_macro": float(metrics["per_condition_calibration_error_macro"]),
+                    "small_prob_max": float(metrics["small_prob_max"]),
                 }
             )
             epoch_records.append(row)
@@ -207,6 +288,9 @@ def run_le_hyper_search(
                         "base_rate": float(per_cond_row["base_rate"]),
                         "pred_mean": float(per_cond_row["pred_mean"]),
                         "calibration": float(per_cond_row["calibration"]),
+                        "calibration_abs_error": float(per_cond_row["calibration_abs_error"]),
+                        "ece": float(per_cond_row["ece"]),
+                        "ece_small": float(per_cond_row["ece_small"]),
                     }
                 )
                 condition_records.append(cond_row)

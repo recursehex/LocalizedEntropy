@@ -233,7 +233,7 @@
           "by_source": {
             "avazu": {
               "epochs": 5,
-              "lr": 0.01,
+              "lr": 0.0025,
               "lr_decay": 0.999,
               "lr_category_decay": 0.9999,
               "lr_category": null,
@@ -275,7 +275,7 @@
             },
             "synthetic": {
               "epochs": 5,
-              "lr": 0.001,
+              "lr": 0.003,
               "lr_decay": 0.999,
               "lr_category_decay": 0.9999,
               "lr_category": null,
@@ -334,11 +334,11 @@
         128,
         64
       ],
-      "embed_dim": 16,
+      "embed_dim": 4,
       "cat_embed_dim": 8,
-      "activation": "relu",
+      "activation": "silu",
       "norm": null,
-      "dropout": 0.3
+      "dropout": 0.01
     },
     "data": {
       "source": "ctr",
