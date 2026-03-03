@@ -23,7 +23,7 @@ This repository implements and evaluates Localized Entropy (LE), a normalized cr
 
 ## Requirements
 Python 3.10+ with:
-- `numpy`, `pandas`, `matplotlib`, `scipy`, `torch`
+- `numpy`, `pandas`, `matplotlib`, `seaborn`, `scipy`, `torch`
 
 ## How to run
 1. Open `localized_entropy.ipynb`.
@@ -129,6 +129,8 @@ The notebook stays small and delegates everything to the modules in `localized_e
 The notebook produces:
 - Training/evaluation loss curves.
 - Prediction distributions on a log10 scale.
+- Reliability diagrams and cross-loss calibration comparisons.
+- Cross-loss metric summary plots (logloss, ECE, ROC-AUC, PR-AUC, F1, etc.).
 - Per-condition LE numerator/denominator stats.
 - Total BCE log loss, total ECE, and per-ad BCE/ECE (including low-probability calibration).
 - Total ROC-AUC and PR-AUC for CTR baseline comparison.

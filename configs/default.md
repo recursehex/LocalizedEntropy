@@ -347,6 +347,15 @@ Example: small synthetic dataset with 4 conditions and 3 features:
 - `plots.eval_pred_by_condition`: Plot per-condition predictions.
 - `plots.eval_calibration_ratio`: Plot calibration ratio vs condition
   base rate after training.
+- `plots.eval_reliability`: Plot a reliability diagram (avg predicted
+  probability vs observed rate) from ECE bins for each trained model.
+- `plots.eval_reliability_compare`: When multiple losses are trained,
+  plot a combined reliability diagram for side-by-side calibration
+  comparison.
+- `plots.eval_metric_summary`: Plot a multi-metric model summary panel
+  (logloss/ece/auc/f1, etc.) across trained losses.
+- `plots.bce_le_calibration_comparison`: When BCE and LE are both
+  trained, plot per-condition calibration gap comparisons.
 - `plots.eval_pred_value_range`: Log10(p) plot range as [min, max].
 - `plots.le_stats`: Plot LE numerator/denominator stats per condition.
 - `plots.grad_sq_by_condition`: Track and plot per-condition mean-squared
@@ -361,6 +370,13 @@ Example: small synthetic dataset with 4 conditions and 3 features:
 - `plots.ctr_max_features`: Max numeric features to plot.
 - `plots.ctr_log10_features`: Numeric feature names to log10-transform.
 - `plots.ctr_use_density`: Use density for CTR feature plots.
+- `plots.seaborn`: Theme settings for Seaborn-backed plots.
+  - `enabled`: If true, use Seaborn theme/style configuration.
+  - `style`: Seaborn style (`whitegrid`, `darkgrid`, etc.).
+  - `context`: Seaborn context (`paper`, `notebook`, `talk`, `poster`).
+  - `palette`: Seaborn color palette name.
+  - `font_scale`: Global Seaborn font scale.
+  - `despine`: If true, remove top/right spines after theme setup.
 
 ### logging
 - `logging.print_loader_note`: Print DataLoader configuration summary.

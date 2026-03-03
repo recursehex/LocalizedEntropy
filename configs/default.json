@@ -576,6 +576,10 @@
       "eval_pred_hist": true,
       "eval_pred_by_condition": true,
       "eval_calibration_ratio": true,
+      "eval_reliability": true,
+      "eval_reliability_compare": true,
+      "eval_metric_summary": true,
+      "bce_le_calibration_comparison": true,
       "eval_pred_value_range": [
         -12,
         0
@@ -590,7 +594,15 @@
       "ctr_label_rates": true,
       "ctr_max_features": 3,
       "ctr_log10_features": [],
-      "ctr_use_density": false
+      "ctr_use_density": false,
+      "seaborn": {
+        "enabled": true,
+        "style": "whitegrid",
+        "context": "notebook",
+        "palette": "deep",
+        "font_scale": 1.0,
+        "despine": false
+      }
     },
     "logging": {
       "print_loader_note": true

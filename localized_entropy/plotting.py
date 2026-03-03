@@ -3,9 +3,38 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
+
+try:
+    import seaborn as sns
+except Exception:
+    sns = None
 
 
-plt.style.use("seaborn-v0_8")
+def configure_plot_theme(theme_cfg: Optional[dict] = None) -> None:
+    """Configure plotting theme, preferring seaborn when available."""
+    cfg = theme_cfg or {}
+    use_seaborn = bool(cfg.get("enabled", True))
+    style = str(cfg.get("style", "whitegrid"))
+    context = str(cfg.get("context", "notebook"))
+    palette = str(cfg.get("palette", "deep"))
+    font_scale = float(cfg.get("font_scale", 1.0))
+    despine = bool(cfg.get("despine", False))
+
+    if use_seaborn and sns is not None:
+        sns.set_theme(
+            style=style,
+            context=context,
+            palette=palette,
+            font_scale=font_scale,
+        )
+        if despine:
+            sns.despine()
+        return
+    plt.style.use("seaborn-v0_8")
+
+
+configure_plot_theme()
 
 
 def _density_lines(
@@ -242,6 +271,267 @@ def plot_calibration_ratio_by_condition(
         out_path = Path(output_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(out_path, dpi=200)
+    plt.show()
+
+
+def plot_reliability_diagram(
+    ece_table: pd.DataFrame,
+    *,
+    name: str = "Eval",
+    title: Optional[str] = None,
+    output_path: Optional[Union[str, Path]] = None,
+) -> None:
+    """Plot a reliability diagram from an ECE bin table."""
+    if ece_table is None or len(ece_table) == 0:
+        print("[WARN] Calibration table is empty; skipping reliability diagram.")
+        return
+    needed = {"avg_pred", "avg_label", "count"}
+    if not needed.issubset(set(ece_table.columns)):
+        print("[WARN] Calibration table missing required columns; skipping reliability diagram.")
+        return
+    df = ece_table.copy()
+    df = df[np.isfinite(df["avg_pred"]) & np.isfinite(df["avg_label"]) & (df["count"] > 0)]
+    if df.empty:
+        print("[WARN] No finite calibration bins available; skipping reliability diagram.")
+        return
+    df = df.sort_values("avg_pred")
+    if title is None:
+        title = f"{name} Reliability Diagram"
+
+    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
+    if sns is not None:
+        sns.lineplot(data=df, x="avg_pred", y="avg_label", marker="o", linewidth=2.0, ax=ax)
+        sns.scatterplot(
+            data=df,
+            x="avg_pred",
+            y="avg_label",
+            size="count",
+            sizes=(40, 240),
+            legend=False,
+            ax=ax,
+        )
+    else:
+        ax.plot(df["avg_pred"], df["avg_label"], marker="o", linewidth=2.0, color="#4477aa")
+        sizes = np.sqrt(df["count"].to_numpy(dtype=np.float64)) * 3.0
+        ax.scatter(df["avg_pred"], df["avg_label"], s=sizes, color="#4477aa", alpha=0.85)
+    ax.plot([0.0, 1.0], [0.0, 1.0], linestyle="--", color="#cc6677", linewidth=1.5, label="Perfect")
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_xlabel("Mean predicted probability")
+    ax.set_ylabel("Observed positive rate")
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    if output_path:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path, dpi=200)
+    plt.show()
+
+
+def plot_reliability_comparison(
+    reliability_tables: dict,
+    *,
+    title: str = "Reliability Diagram Comparison",
+) -> None:
+    """Plot a multi-model reliability comparison."""
+    if not reliability_tables:
+        print("[WARN] No reliability tables available; skipping comparison plot.")
+        return
+    frames = []
+    for model_name, table in reliability_tables.items():
+        if table is None or len(table) == 0:
+            continue
+        needed = {"avg_pred", "avg_label", "count"}
+        if not needed.issubset(set(table.columns)):
+            continue
+        df = table.copy()
+        df = df[np.isfinite(df["avg_pred"]) & np.isfinite(df["avg_label"]) & (df["count"] > 0)]
+        if df.empty:
+            continue
+        df = df.sort_values("avg_pred")
+        df["model"] = str(model_name)
+        frames.append(df)
+    if not frames:
+        print("[WARN] Reliability tables have no finite bins; skipping comparison plot.")
+        return
+    plot_df = pd.concat(frames, ignore_index=True)
+
+    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
+    if sns is not None:
+        sns.lineplot(
+            data=plot_df,
+            x="avg_pred",
+            y="avg_label",
+            hue="model",
+            marker="o",
+            linewidth=2.0,
+            ax=ax,
+        )
+    else:
+        for model_name, group in plot_df.groupby("model"):
+            ax.plot(group["avg_pred"], group["avg_label"], marker="o", linewidth=2.0, label=model_name)
+        ax.legend()
+    ax.plot([0.0, 1.0], [0.0, 1.0], linestyle="--", color="#cc6677", linewidth=1.5, label="Perfect")
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_xlabel("Mean predicted probability")
+    ax.set_ylabel("Observed positive rate")
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_model_metric_summary(
+    metrics_df: pd.DataFrame,
+    *,
+    model_col: str = "model",
+    title: str = "Model Metric Summary",
+    max_metrics: int = 8,
+) -> None:
+    """Plot key metrics as small-multiple bar charts for each model."""
+    if metrics_df is None or len(metrics_df) == 0:
+        print("[WARN] Metrics table is empty; skipping metric summary plot.")
+        return
+    if model_col not in metrics_df.columns:
+        print("[WARN] Metrics table missing model column; skipping metric summary plot.")
+        return
+    metric_cols = [c for c in metrics_df.columns if c != model_col]
+    if not metric_cols:
+        print("[WARN] Metrics table has no metric columns; skipping metric summary plot.")
+        return
+    metric_cols = metric_cols[: max(1, int(max_metrics))]
+    plot_df = metrics_df.loc[:, [model_col] + metric_cols].copy()
+    long_df = plot_df.melt(id_vars=[model_col], value_vars=metric_cols, var_name="metric", value_name="value")
+    long_df = long_df[np.isfinite(long_df["value"])]
+    if long_df.empty:
+        print("[WARN] Metrics are not finite; skipping metric summary plot.")
+        return
+    n_metrics = len(metric_cols)
+    ncols = min(4, n_metrics)
+    nrows = int(np.ceil(n_metrics / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4.5 * ncols, 3.4 * nrows), squeeze=False)
+    axes_flat = axes.flatten()
+
+    for idx, metric in enumerate(metric_cols):
+        ax = axes_flat[idx]
+        metric_slice = long_df[long_df["metric"] == metric]
+        if metric_slice.empty:
+            ax.axis("off")
+            continue
+        if sns is not None:
+            sns.barplot(data=metric_slice, x=model_col, y="value", hue=model_col, ax=ax)
+            legend = ax.get_legend()
+            if legend is not None:
+                legend.remove()
+        else:
+            x = np.arange(len(metric_slice))
+            ax.bar(x, metric_slice["value"].to_numpy(dtype=np.float64), color="#4477aa")
+            ax.set_xticks(x)
+            ax.set_xticklabels(metric_slice[model_col].astype(str).tolist(), rotation=20)
+        ax.set_title(metric.replace("_", " ").upper())
+        ax.set_xlabel("")
+        ax.set_ylabel("Value")
+        ax.grid(True, alpha=0.3)
+
+    for idx in range(n_metrics, len(axes_flat)):
+        axes_flat[idx].axis("off")
+    fig.suptitle(title)
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_bce_le_calibration_comparison(
+    comparison_df: pd.DataFrame,
+    *,
+    condition_label: str,
+    top_k: int = 20,
+    title: Optional[str] = None,
+) -> None:
+    """Plot BCE-vs-LE calibration gap diagnostics across conditions."""
+    if comparison_df is None or len(comparison_df) == 0:
+        print("[WARN] No comparison data available; skipping calibration comparison plot.")
+        return
+    required = {condition_label, "base_rate", "bce_calibration", "le_calibration"}
+    if not required.issubset(set(comparison_df.columns)):
+        print("[WARN] Comparison data missing calibration columns; skipping plot.")
+        return
+    df = comparison_df.loc[:, [condition_label, "base_rate", "bce_calibration", "le_calibration"]].copy()
+    df = df[np.isfinite(df["base_rate"]) & (df["base_rate"] > 0)]
+    df = df[np.isfinite(df["bce_calibration"]) & np.isfinite(df["le_calibration"])]
+    if df.empty:
+        print("[WARN] No finite calibration rows available; skipping comparison plot.")
+        return
+    df["bce_abs_gap"] = np.abs(1.0 - df["bce_calibration"])
+    df["le_abs_gap"] = np.abs(1.0 - df["le_calibration"])
+    top_k = int(top_k)
+    if top_k > 0 and len(df) > top_k:
+        df = df.nlargest(top_k, "base_rate")
+    df = df.sort_values("base_rate")
+
+    if title is None:
+        title = f"BCE vs LE Calibration Comparison by {condition_label}"
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    scatter_ax, ratio_ax = axes
+
+    if sns is not None:
+        sns.scatterplot(
+            data=df,
+            x="bce_abs_gap",
+            y="le_abs_gap",
+            hue="base_rate",
+            size="base_rate",
+            sizes=(40, 240),
+            palette="viridis",
+            ax=scatter_ax,
+        )
+    else:
+        scatter_ax.scatter(df["bce_abs_gap"], df["le_abs_gap"], color="#4477aa", alpha=0.8)
+    max_gap = max(
+        float(np.nanmax(df["bce_abs_gap"])) if len(df) else 0.0,
+        float(np.nanmax(df["le_abs_gap"])) if len(df) else 0.0,
+    )
+    max_gap = max(max_gap, 1e-6)
+    scatter_ax.plot([0.0, max_gap], [0.0, max_gap], linestyle="--", color="#cc6677", linewidth=1.2)
+    scatter_ax.set_xlabel("BCE |1 - calibration|")
+    scatter_ax.set_ylabel("LE |1 - calibration|")
+    scatter_ax.set_title("Calibration Abs Gap (lower is better)")
+    scatter_ax.grid(True, alpha=0.3)
+
+    ratio_df = df.melt(
+        id_vars=[condition_label, "base_rate"],
+        value_vars=["bce_calibration", "le_calibration"],
+        var_name="loss",
+        value_name="calibration_ratio",
+    )
+    ratio_df["loss"] = ratio_df["loss"].map(
+        {"bce_calibration": "BCE", "le_calibration": "LE"}
+    ).fillna(ratio_df["loss"])
+    if sns is not None:
+        sns.lineplot(
+            data=ratio_df,
+            x="base_rate",
+            y="calibration_ratio",
+            hue="loss",
+            marker="o",
+            ax=ratio_ax,
+        )
+    else:
+        for loss_name, group in ratio_df.groupby("loss"):
+            ratio_ax.plot(group["base_rate"], group["calibration_ratio"], marker="o", label=loss_name)
+        ratio_ax.legend()
+    ratio_ax.axhline(1.0, color="#cc6677", linestyle="--", linewidth=1.2)
+    ratio_ax.set_xscale("log")
+    ratio_ax.set_xlabel(f"{condition_label} base rate")
+    ratio_ax.set_ylabel("Calibration ratio (pred_mean / base_rate)")
+    ratio_ax.set_title("Calibration Ratio vs Base Rate")
+    ratio_ax.grid(True, alpha=0.3, which="both")
+
+    fig.suptitle(title)
+    fig.tight_layout()
     plt.show()
 
 

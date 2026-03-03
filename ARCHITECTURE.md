@@ -18,6 +18,8 @@ Step-by-step pipeline:
 1) Load config + set seed and device
 - Uses `localized_entropy/config.py` to load and resolve
   `configs/default.json`.
+- Applies plotting theme settings from `plots.seaborn` via
+  `configure_plot_theme` (Seaborn-backed by default).
 - Per-loss `training.by_loss` overrides are resolved when each loss is
   trained (BCE vs LE), including `by_source` settings nested under each
   loss for the active source key (`synthetic` or active CTR dataset key such as `avazu`, `criteo`, `yambda`).
@@ -195,6 +197,11 @@ Step-by-step pipeline:
   - BCE log loss, ECE, ROC-AUC, PR-AUC.
   - Accuracy/F1 at 0.5 (global) plus per-condition accuracy/F1.
   - Per-condition ECE and base rates.
+  - Reliability diagrams from ECE bins (`plots.eval_reliability`) and,
+    when multiple losses are trained, a combined reliability comparison
+    (`plots.eval_reliability_compare`).
+  - Cross-loss model metric summary panels
+    (`plots.eval_metric_summary`).
   - ECE backend is configurable via `evaluation.ece_method`:
     `custom`, `adaptive`, `smooth`, `adaptive_lib`, or `smooth_lib`.
     The `_lib` variants use external implementations (`pandas.qcut`
@@ -211,6 +218,8 @@ Step-by-step pipeline:
   aggregates (impression-weighted + macro, each with percent change vs
   BCE) and a per-condition abs(1 - calibration) table for quick
   closeness-to-1 checks.
+  Optional Seaborn diagnostics also plot per-condition BCE-vs-LE
+  calibration gap comparisons (`plots.bce_le_calibration_comparison`).
   By default, comparison rows are sorted by per-condition base rate
   descending (`comparison.sort_by=base_rate`).
 
@@ -339,6 +348,9 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
   - Prediction histograms (log10 p).
   - Loss curves.
   - Eval loss by batch (when mid-epoch eval is enabled).
+  - Reliability diagrams and multi-model reliability comparisons.
+  - Cross-loss metric summary bar panels.
+  - BCE-vs-LE per-condition calibration gap comparison charts.
   - Per-condition LE diagnostics.
   - Table plots for BCE vs LE per-condition comparisons.
 - Outputs are shown inline in the notebook, and `localized_entropy.ipynb`
