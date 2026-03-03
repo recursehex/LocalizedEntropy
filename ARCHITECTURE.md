@@ -1,7 +1,8 @@
 # Localized Entropy Architecture Overview
 
 This document describes the end-to-end pipeline and modules used by the
-`localized_entropy.ipynb` notebook, plus the supporting Python scripts.
+`localized_entropy.ipynb` notebook, plus the supporting Python scripts and
+hyperparameter search notebooks under `notebooks/hyper_search/`.
 
 ## Project goal
 
@@ -257,6 +258,29 @@ Step-by-step pipeline:
 - If labels are available, collects per-condition LE numerator/
   denominator stats and plots them.
 
+## Hyperparameter search notebooks
+
+- Hyperparameter search notebooks now live under
+  `notebooks/hyper_search/`.
+- Each notebook exposes a top-level `LOSS_MODE` flag in the first code
+  cell; set it to one of `bce`, `le`, or `fl` to switch the training
+  loss used by that sweep.
+- Notebooks resolve `REPO_ROOT` dynamically before loading
+  `configs/hyper.json`, so they continue to work after being moved into
+  a subdirectory.
+- Hyper-search execution is routed through
+  `localized_entropy.hyper_search.run_hyper_search` and reports
+  `test_loss` as the per-epoch loss metric.
+- Current notebook set:
+  - `hyper_search.ipynb`
+  - `activation_hyper_search.ipynb`
+  - `batch_size_hyper_search.ipynb`
+  - `decay_hyper_search.ipynb`
+  - `dropout_hyper_search.ipynb`
+  - `embedding_size_hyper_search.ipynb`
+  - `history_hyper_search.ipynb`
+  - `norm_hyper_search.ipynb`
+
 ## Data pipeline details
 
 CTR source (`localized_entropy/data/ctr.py`):
@@ -364,6 +388,8 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
 ## Key entry points
 
 - `localized_entropy.ipynb`: end-to-end execution.
+- `notebooks/hyper_search/*.ipynb`: loss-configurable hyperparameter
+  search notebooks.
 - `configs/default.json`: experiment configuration.
 - `localized_entropy/`: reusable pipeline, model, training, and analysis.
 - `ad_id_compare_bce_le.py`: trains BCE/LE models and writes per-condition

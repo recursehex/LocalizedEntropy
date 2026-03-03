@@ -30,14 +30,15 @@ class SearchContext:
     non_blocking: bool
     model_dtype: torch.dtype
     splits: Any
+    loss_mode: str
     loss_loaders: Any
-    le_train_cfg: dict
+    loss_train_cfg: dict
     data_source: str
     eval_loader: Any
     eval_labels: np.ndarray
     eval_conds: np.ndarray
     eval_name: str
-    base_rates_train: np.ndarray
+    base_rates_train: Optional[torch.Tensor]
 
 
 def resolve_lr_category(train_cfg: dict) -> Optional[float]:
@@ -46,6 +47,26 @@ def resolve_lr_category(train_cfg: dict) -> Optional[float]:
     if "lr_category" in train_cfg:
         return train_cfg.get("lr_category")
     return train_cfg.get("LRCategory")
+
+
+def _normalize_search_loss_mode(loss_mode: str) -> str:
+    text = str(loss_mode).lower().strip()
+    if text in {"localized_entropy", "le"}:
+        return "localized_entropy"
+    if text == "bce":
+        return "bce"
+    if text in {"focal", "focal_loss", "focal-loss", "fl"}:
+        return "focal"
+    raise ValueError(f"Unsupported loss_mode for hyper search: {loss_mode}")
+
+
+def _short_loss_mode_name(loss_mode: str) -> str:
+    canonical = _normalize_search_loss_mode(loss_mode)
+    if canonical == "localized_entropy":
+        return "le"
+    if canonical == "focal":
+        return "fl"
+    return canonical
 
 
 def _global_calibration_ratio(preds: np.ndarray, labels: np.ndarray, eps: float = 1e-12) -> float:
@@ -146,7 +167,8 @@ def collect_all_data_metrics(
     return metrics, per_cond
 
 
-def build_search_context(config_path: str) -> SearchContext:
+def build_search_context(config_path: str, loss_mode: str = "localized_entropy") -> SearchContext:
+    resolved_loss_mode = _normalize_search_loss_mode(loss_mode)
     cfg = load_and_resolve(config_path)
     device_cfg = cfg.get("device", {})
     deterministic_cuda = bool(device_cfg.get("deterministic_cuda", False))
@@ -161,7 +183,7 @@ def build_search_context(config_path: str) -> SearchContext:
     prepared = prepare_data(cfg, device, use_cuda, use_mps)
     splits = prepared.splits
 
-    loss_loaders, le_train_cfg = build_loss_loaders(cfg, "localized_entropy", splits, device, use_cuda, use_mps)
+    loss_loaders, loss_train_cfg = build_loss_loaders(cfg, resolved_loss_mode, splits, device, use_cuda, use_mps)
     data_source = get_data_source(cfg)
     test_has_labels = not (data_source == "ctr" and not bool(resolve_ctr_config(cfg).get("test_has_labels", False)))
     if loss_loaders.test_loader is not None and splits.y_test is not None and test_has_labels:
@@ -175,14 +197,16 @@ def build_search_context(config_path: str) -> SearchContext:
         eval_conds = np.asarray(splits.c_eval).reshape(-1)
         eval_name = "eval"
 
-    first_param_dtype = torch.float64 if cpu_float64 else torch.float32
-    base_rates_train = compute_base_rates_from_loader(
-        loss_loaders.train_loader,
-        num_conditions=int(splits.num_conditions),
-        device=device,
-        dtype=first_param_dtype,
-        non_blocking=non_blocking,
-    )
+    base_rates_train: Optional[torch.Tensor] = None
+    if resolved_loss_mode == "localized_entropy":
+        first_param_dtype = torch.float64 if cpu_float64 else torch.float32
+        base_rates_train = compute_base_rates_from_loader(
+            loss_loaders.train_loader,
+            num_conditions=int(splits.num_conditions),
+            device=device,
+            dtype=first_param_dtype,
+            non_blocking=non_blocking,
+        )
 
     return SearchContext(
         cfg=cfg,
@@ -192,8 +216,9 @@ def build_search_context(config_path: str) -> SearchContext:
         non_blocking=non_blocking,
         model_dtype=model_dtype,
         splits=splits,
+        loss_mode=resolved_loss_mode,
         loss_loaders=loss_loaders,
-        le_train_cfg=le_train_cfg,
+        loss_train_cfg=loss_train_cfg,
         data_source=data_source,
         eval_loader=eval_loader,
         eval_labels=eval_labels,
@@ -203,27 +228,30 @@ def build_search_context(config_path: str) -> SearchContext:
     )
 
 
-def default_le_train_params(ctx: SearchContext) -> Dict[str, Any]:
-    le_train_cfg = ctx.le_train_cfg
+def default_train_params(ctx: SearchContext) -> Dict[str, Any]:
+    loss_train_cfg = ctx.loss_train_cfg
+    focal_cfg = loss_train_cfg.get("focal", {}) if isinstance(loss_train_cfg, dict) else {}
     return {
-        "epochs": int(le_train_cfg.get("epochs", ctx.cfg["training"]["epochs"])),
-        "lr": float(le_train_cfg.get("lr", ctx.cfg["training"]["lr"])),
-        "lr_category": resolve_lr_category(le_train_cfg),
-        "lr_decay": float(le_train_cfg.get("lr_decay", ctx.cfg.get("training", {}).get("lr_decay", 1.0))),
+        "epochs": int(loss_train_cfg.get("epochs", ctx.cfg["training"]["epochs"])),
+        "lr": float(loss_train_cfg.get("lr", ctx.cfg["training"]["lr"])),
+        "lr_category": resolve_lr_category(loss_train_cfg),
+        "lr_decay": float(loss_train_cfg.get("lr_decay", ctx.cfg.get("training", {}).get("lr_decay", 1.0))),
         "lr_category_decay": float(
-            le_train_cfg.get(
+            loss_train_cfg.get(
                 "lr_category_decay",
                 ctx.cfg.get("training", {}).get("lr_category_decay", 1.0),
             )
         ),
-        "lr_zero_after_epochs": le_train_cfg.get("lr_zero_after_epochs"),
-        "le_cross_batch_cfg": copy.deepcopy(le_train_cfg.get("cross_batch"))
-        if isinstance(le_train_cfg.get("cross_batch"), dict)
+        "lr_zero_after_epochs": loss_train_cfg.get("lr_zero_after_epochs"),
+        "le_cross_batch_cfg": copy.deepcopy(loss_train_cfg.get("cross_batch"))
+        if isinstance(loss_train_cfg.get("cross_batch"), dict) and ctx.loss_mode == "localized_entropy"
         else None,
+        "focal_alpha": float(focal_cfg.get("alpha", 0.25)) if ctx.loss_mode == "focal" else None,
+        "focal_gamma": float(focal_cfg.get("gamma", 2.0)) if ctx.loss_mode == "focal" else None,
     }
 
 
-def run_le_hyper_search(
+def run_hyper_search(
     ctx: SearchContext,
     *,
     param_grid: Sequence[Mapping[str, Any]],
@@ -241,7 +269,7 @@ def run_le_hyper_search(
 
     for params in param_grid:
         cfg_run = copy.deepcopy(ctx.cfg)
-        train_params = default_le_train_params(ctx)
+        train_params = default_train_params(ctx)
         apply_params(cfg_run, train_params, params)
 
         set_seed(
@@ -253,13 +281,19 @@ def run_le_hyper_search(
         record_payload = record_params(params)
 
         def on_epoch_eval(_eval_preds: np.ndarray, epoch: int, payload: Dict[str, Any] = record_payload) -> None:
-            le_loss, _ = evaluate(
+            eval_kwargs: Dict[str, Any] = {}
+            if ctx.loss_mode == "localized_entropy" and ctx.base_rates_train is not None:
+                eval_kwargs["base_rates"] = ctx.base_rates_train
+            if ctx.loss_mode == "focal":
+                eval_kwargs["focal_alpha"] = train_params.get("focal_alpha")
+                eval_kwargs["focal_gamma"] = train_params.get("focal_gamma")
+            eval_loss, _ = evaluate(
                 model,
                 ctx.eval_loader,
                 ctx.device,
-                loss_mode="localized_entropy",
-                base_rates=ctx.base_rates_train,
+                loss_mode=ctx.loss_mode,
                 non_blocking=ctx.non_blocking,
+                **eval_kwargs,
             )
             metrics, per_cond_df = collect_all_data_metrics(
                 cfg_run,
@@ -274,7 +308,8 @@ def run_le_hyper_search(
             row.update(
                 {
                     "epoch": int(epoch),
-                    "test_le": float(le_loss),
+                    "loss_mode": _short_loss_mode_name(ctx.loss_mode),
+                    "test_loss": float(eval_loss),
                     "global_calibration": float(metrics["global_calibration"]),
                     "global_calibration_error": float(metrics["global_calibration_error"]),
                     "ece": float(metrics["ece"]),
@@ -305,26 +340,32 @@ def run_le_hyper_search(
 
         train_single_loss(
             model=model,
-            loss_mode="localized_entropy",
+            loss_mode=ctx.loss_mode,
             train_loader=ctx.loss_loaders.train_loader,
             train_eval_loader=ctx.eval_loader,
             eval_loader=ctx.eval_loader,
             device=ctx.device,
             epochs=train_params["epochs"],
             lr=train_params["lr"],
-            lr_category=None if train_params["lr_category"] is None else float(train_params["lr_category"]),
+            lr_category=(
+                None
+                if (train_params["lr_category"] is None or ctx.loss_mode != "localized_entropy")
+                else float(train_params["lr_category"])
+            ),
             lr_decay=float(train_params["lr_decay"]),
             lr_category_decay=float(train_params["lr_category_decay"]),
             lr_zero_after_epochs=train_params["lr_zero_after_epochs"],
             eval_has_labels=True,
-            le_base_rates_train=ctx.base_rates_train,
-            le_base_rates_train_eval=ctx.base_rates_train,
-            le_base_rates_eval=ctx.base_rates_train,
+            le_base_rates_train=ctx.base_rates_train if ctx.loss_mode == "localized_entropy" else None,
+            le_base_rates_train_eval=ctx.base_rates_train if ctx.loss_mode == "localized_entropy" else None,
+            le_base_rates_eval=ctx.base_rates_train if ctx.loss_mode == "localized_entropy" else None,
+            focal_alpha=train_params.get("focal_alpha"),
+            focal_gamma=train_params.get("focal_gamma"),
             non_blocking=ctx.non_blocking,
             eval_callback=on_epoch_eval,
             plot_eval_hist_epochs=False,
             print_embedding_table=False,
-            le_cross_batch_cfg=train_params["le_cross_batch_cfg"],
+            le_cross_batch_cfg=train_params["le_cross_batch_cfg"] if ctx.loss_mode == "localized_entropy" else None,
         )
 
     results_df = pd.DataFrame(epoch_records)
