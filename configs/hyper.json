@@ -23,11 +23,11 @@
             128,
             64
           ],
-          "embed_dim": 16,
+          "embed_dim": 4,
           "cat_embed_dim": 8,
-          "activation": "relu",
+          "activation": "silu",
           "norm": null,
-          "dropout": 0.3
+          "dropout": 0.01
         }
       },
       "small_net": {
@@ -40,7 +40,7 @@
             64
           ],
           "embed_dim": 8,
-          "dropout": 0.2
+          "dropout": 0.01
         }
       },
       "wide_net": {
@@ -55,9 +55,9 @@
           ],
           "embed_dim": 16,
           "cat_embed_dim": 8,
-          "activation": "relu",
+          "activation": "silu",
           "norm": null,
-          "dropout": 0.3
+          "dropout": 0.01
         }
       },
       "large_net": {
@@ -75,9 +75,9 @@
           ],
           "embed_dim": 32,
           "cat_embed_dim": 16,
-          "activation": "relu",
+          "activation": "silu",
           "norm": null,
-          "dropout": 0.35
+          "dropout": 0.01
         }
       },
       "avazu_top10_ads_by_count": {
@@ -180,7 +180,7 @@
     "batch_size": 25000,
     "loss_mode": "both",
     "focal": {
-      "alpha": 0.20,
+      "alpha": 0.2,
       "gamma": 0.5
     },
     "eval_every_n_batches": 0,
@@ -325,11 +325,11 @@
       128,
       64
     ],
-    "embed_dim": 16,
+    "embed_dim": 4,
     "cat_embed_dim": 8,
-    "activation": "relu",
+    "activation": "silu",
     "norm": null,
-    "dropout": 0.3
+    "dropout": 0.01
   },
   "data": {
     "source": "synthetic",
@@ -500,8 +500,8 @@
   },
   "synthetic": {
     "num_conditions": 4,
-    "min_samples_per_condition": 3000000,
-    "max_samples_per_condition": 3000000,
+    "min_samples_per_condition": 5000000,
+    "max_samples_per_condition": 5000000,
     "test_split": 0.1,
     "numeric_features": [
       "age",
@@ -510,10 +510,9 @@
     ],
     "condition_mode": "uniform",
     "uniform_log10_means": [
-      -2.0,
-      -2.1,
-      -2.2,
-      -2.3
+      -2,
+      -3,
+      -4
     ],
     "uniform_log10_std": 0.6,
     "use_true_base_rates_for_le": true,
