@@ -28,7 +28,24 @@ Step-by-step pipeline:
   `device.use_mps` in the config; when MPS is explicitly disabled, the
   notebook builds models with float64 on CPU.
 
-2) Optional CTR filtering + caching (config-driven)
+2) Optional Yambda preparation + CTR filtering + caching (config-driven)
+- `localized_entropy/data/yambda.py` handles the Yambda 50M flat
+  multi-event pipeline when `data.ctr_dataset=yambda`:
+  - If `ctr.datasets.yambda.auto_prepare=true` and train/test CSVs are
+    missing, it reads
+    `ctr.datasets.yambda.source_parquet_path` (defaults to
+    `data/yambda/multi_event.parquet`).
+  - If the source parquet is missing and
+    `ctr.datasets.yambda.download_if_missing=true`, it downloads from
+    Hugging Face (`hf_repo_id`, `hf_subfolder`, `hf_filename`).
+  - It streams parquet batches to pandas, maps `event_type` to the
+    configured binary label (`label_col`, default `click`) using
+    `yambda_positive_event_types` (default `["like"]`), and optionally
+    gates `"listen"` labels by `listen_min_played_ratio_pct`.
+  - It writes deterministic hash-split train/test CSVs using
+    `yambda_test_fraction`, `yambda_hash_mod`, and
+    `yambda_prepare_batch_size_rows`.
+  - It marks `test_has_labels=true` after preparation.
 - `localized_entropy/data/ctr.py` applies
   `ctr.datasets.<active>.filter` (or legacy
   `ctr.datasets.<active>.filter_col`/`filter_top_k`) to select a subset of conditions
@@ -44,9 +61,11 @@ Step-by-step pipeline:
 3) Data preparation
 - `localized_entropy/data/pipeline.py` drives the data pipeline.
 - It branches on `data.source`:
-  - CTR: `localized_entropy/data/ctr.py` loads CSVs, adds derived
-    features (time, device counters), encodes conditions and
-    categoricals, and builds numeric/categorical arrays.
+  - CTR: runs optional Yambda auto-preparation first
+    (`localized_entropy/data/yambda.py`), then
+    `localized_entropy/data/ctr.py` loads CSVs, adds derived
+    features (time, device counters), encodes conditions/categoricals,
+    and builds numeric/categorical arrays.
   - Synthetic: `localized_entropy/data/synthetic.py` generates
     synthetic net-worth and age distributions per condition and
     converts to numeric features.
@@ -282,6 +301,31 @@ Step-by-step pipeline:
   - `norm_hyper_search.ipynb`
 
 ## Data pipeline details
+
+Yambda source preparation (`localized_entropy/data/yambda.py`):
+- Applies only when `data.source=ctr` and the resolved dataset key is
+  `yambda`.
+- If `auto_prepare=true`, ensures `train_path`/`test_path` exist by
+  converting `flat/50m/multi_event.parquet` to CTR-style CSVs.
+- Supports optional Hugging Face download via
+  `download_if_missing=true` and:
+  - `hf_repo_id` (default `yandex/yambda`)
+  - `hf_subfolder` (default `flat/50m`)
+  - `hf_filename` (default `multi_event.parquet`)
+- Uses pandas batch transforms with:
+  - fixed input columns:
+    `uid`, `item_id`, `timestamp`, `is_organic`, `event_type`,
+    `played_ratio_pct`, `track_length_seconds`
+  - output label mapping from `event_type` using
+    `yambda_positive_event_types` + optional
+    `listen_min_played_ratio_pct` threshold
+  - deterministic hash split to train/test from
+    `(uid, item_id, timestamp)` using `yambda_test_fraction` and
+    `yambda_hash_mod`
+- Emits CSV columns:
+  `label_col`, `item_id`, `timestamp`, `played_ratio_pct`,
+  `track_length_seconds`, `uid`, `is_organic`, `event_type`.
+- Marks `test_has_labels=true` after successful generation.
 
 CTR source (`localized_entropy/data/ctr.py`):
 - Resolves active dataset config from `data.ctr_dataset` (or `ctr.dataset`)

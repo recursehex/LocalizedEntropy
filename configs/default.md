@@ -230,6 +230,24 @@ These settings are used when `data.source` is `ctr`.
 - `ctr.datasets.<name>`: Per-dataset overrides (for `avazu`, `criteo`,
   `yambda`) merged on top of `ctr.defaults`.
 - `ctr.datasets.<name>.train_path` / `test_path`: Dataset-specific CSV paths.
+- `ctr.datasets.yambda.source_parquet_path`: Local path to
+  `yandex/yambda` subset `flat/50m` file `multi_event.parquet`.
+- `ctr.datasets.yambda.auto_prepare`: If true, auto-generate
+  `train_path`/`test_path` CSV files from `source_parquet_path` when
+  missing.
+- `ctr.datasets.yambda.download_if_missing`: If true, download
+  `source_parquet_path` from Hugging Face when not present locally.
+- `ctr.datasets.yambda.hf_repo_id` / `hf_subfolder` / `hf_filename`:
+  Hugging Face dataset location used for auto-download.
+- `ctr.datasets.yambda.yambda_positive_event_types`: Event types treated
+  as label `1` when building `label_col` from multi-event data.
+- `ctr.datasets.yambda.listen_min_played_ratio_pct`: Optional minimum
+  `played_ratio_pct` threshold when `"listen"` is included in
+  `yambda_positive_event_types`.
+- `ctr.datasets.yambda.yambda_test_fraction` / `yambda_hash_mod`:
+  deterministic hash-split parameters used to create train/test CSVs.
+- `ctr.datasets.yambda.yambda_prepare_batch_size_rows`: Batch size used
+  while streaming parquet -> pandas -> CSV conversion.
 - `ctr.datasets.<name>.numeric_cols`: Numeric feature columns.
 - `ctr.datasets.<name>.categorical_cols`: Categorical feature columns.
 - `ctr.datasets.<name>.categorical_max_values`: Cap per categorical vocab

@@ -211,7 +211,7 @@
             "eval_every_n_batches": 0
           },
           "yambda": {
-            "epochs": 3,
+            "epochs": 1,
             "lr": 0.001,
             "lr_category": null,
             "lr_zero_after_epochs": null,
@@ -255,7 +255,7 @@
             }
           },
           "yambda": {
-            "epochs": 3,
+            "epochs": 1,
             "lr": 0.001,
             "lr_category": null,
             "lr_zero_after_epochs": null,
@@ -299,7 +299,7 @@
             "eval_every_n_batches": 0
           },
           "yambda": {
-            "epochs": 3,
+            "epochs": 1,
             "lr": 0.001,
             "lr_category": null,
             "lr_zero_after_epochs": null,
@@ -482,14 +482,46 @@
       "yambda": {
         "train_path": "data/yambda/train.csv",
         "test_path": "data/yambda/test.csv",
-        "numeric_cols": [],
-        "categorical_cols": [],
-        "condition_col": "Condition",
+        "source_parquet_path": "data/yambda/multi_event.parquet",
+        "auto_prepare": true,
+        "download_if_missing": true,
+        "hf_repo_id": "yandex/yambda",
+        "hf_subfolder": "flat/50m",
+        "hf_filename": "multi_event.parquet",
+        "yambda_test_fraction": 0.1,
+        "yambda_hash_mod": 1000,
+        "yambda_prepare_batch_size_rows": 1000000,
+        "yambda_positive_event_types": [
+          "like"
+        ],
+        "listen_min_played_ratio_pct": 50.0,
+        "label_col": "click",
+        "numeric_cols": [
+          "timestamp",
+          "played_ratio_pct",
+          "track_length_seconds"
+        ],
+        "categorical_cols": [
+          "uid",
+          "is_organic",
+          "event_type"
+        ],
+        "categorical_max_values": 50000,
+        "condition_col": "item_id",
+        "max_conditions": 50000,
+        "test_has_labels": true,
+        "drop_na": true,
+        "plot_sample_size": 200000,
         "filter": {
-          "enabled": false,
-          "mode": "none",
+          "enabled": true,
+          "mode": "top_k",
+          "col": "item_id",
+          "ids": [],
+          "k": 200,
+          "metric": "count",
+          "apply_to_test": true,
           "cache": {
-            "enabled": false,
+            "enabled": true,
             "train_path": "data/yambda/train_filtered.csv",
             "test_path": "data/yambda/test_filtered.csv",
             "overwrite": false

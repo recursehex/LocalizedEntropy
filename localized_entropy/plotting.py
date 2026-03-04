@@ -37,6 +37,38 @@ def configure_plot_theme(theme_cfg: Optional[dict] = None) -> None:
 configure_plot_theme()
 
 
+def _resolve_max_plot_conditions(max_plot_conditions: Optional[int]) -> Optional[int]:
+    """Resolve per-condition plot limit; return None to disable the limit."""
+    if max_plot_conditions is None:
+        return 20
+    try:
+        limit = int(max_plot_conditions)
+    except (TypeError, ValueError):
+        return 20
+    if limit <= 0:
+        return None
+    return limit
+
+
+def _skip_per_condition_plot(
+    *,
+    plot_name: str,
+    num_conditions: int,
+    max_plot_conditions: Optional[int],
+) -> bool:
+    """Return True when a per-condition plot should be skipped."""
+    limit = _resolve_max_plot_conditions(max_plot_conditions)
+    if limit is None:
+        return False
+    if int(num_conditions) > limit:
+        print(
+            f"[INFO] Skipping {plot_name}: num_conditions={int(num_conditions)} "
+            f"exceeds max_plot_conditions={limit}."
+        )
+        return True
+    return False
+
+
 def _density_lines(
     values: np.ndarray,
     groups: np.ndarray,
@@ -207,9 +239,16 @@ def plot_eval_predictions_by_condition(
     title: Optional[str] = None,
     print_counts: bool = True,
     value_range: Tuple[float, float] = (-12, 0),
+    max_plot_conditions: Optional[int] = 20,
     output_path: Optional[Union[str, Path]] = None,
 ) -> None:
     """Plot per-condition prediction distributions."""
+    if _skip_per_condition_plot(
+        plot_name="eval predictions by condition",
+        num_conditions=int(num_conditions),
+        max_plot_conditions=max_plot_conditions,
+    ):
+        return
     if title is None:
         title = f"{name} Predictions: Distribution by Condition (log10(pred probability))"
     if preds.size == 0:
@@ -242,6 +281,7 @@ def plot_calibration_ratio_by_condition(
     name: str = "Eval",
     condition_label: str = "Condition",
     title: Optional[str] = None,
+    max_plot_conditions: Optional[int] = 20,
     output_path: Optional[Union[str, Path]] = None,
 ) -> None:
     """Plot calibration ratio by condition base rate."""
@@ -253,6 +293,12 @@ def plot_calibration_ratio_by_condition(
         return
     x = rates[mask]
     y = ratios[mask]
+    if _skip_per_condition_plot(
+        plot_name="calibration ratio by condition",
+        num_conditions=int(x.size),
+        max_plot_conditions=max_plot_conditions,
+    ):
+        return
     order = np.argsort(x)
     x = x[order]
     y = y[order]
@@ -545,8 +591,15 @@ def plot_feature_distributions_by_condition(
     bins: int = 120,
     log10_features: Optional[set] = None,
     density: bool = True,
+    max_plot_conditions: Optional[int] = 20,
 ) -> None:
     """Plot selected feature distributions by condition."""
+    if _skip_per_condition_plot(
+        plot_name="feature distributions by condition",
+        num_conditions=int(num_conditions),
+        max_plot_conditions=max_plot_conditions,
+    ):
+        return
     if log10_features is None:
         log10_features = set()
     num_features = min(len(feature_names), xnum.shape[1], max_features)
@@ -569,8 +622,16 @@ def plot_label_rates_by_condition(
     labels: np.ndarray,
     conds: np.ndarray,
     num_conditions: int,
+    *,
+    max_plot_conditions: Optional[int] = 20,
 ) -> None:
     """Plot per-condition sample counts and label base rates."""
+    if _skip_per_condition_plot(
+        plot_name="label rates by condition",
+        num_conditions=int(num_conditions),
+        max_plot_conditions=max_plot_conditions,
+    ):
+        return
     c = conds.astype(np.int64).reshape(-1)
     y = labels.astype(np.float64).reshape(-1)
     counts = np.bincount(c, minlength=num_conditions)
@@ -595,9 +656,20 @@ def plot_label_rates_by_condition(
     plt.show()
 
 
-def plot_le_stats_per_condition(stats: dict, title: str = "Localized Entropy terms per condition"):
+def plot_le_stats_per_condition(
+    stats: dict,
+    title: str = "Localized Entropy terms per condition",
+    *,
+    max_plot_conditions: Optional[int] = 20,
+):
     """Plot LE numerator/denominator stats per condition."""
     conds = sorted(stats.keys())
+    if _skip_per_condition_plot(
+        plot_name="LE stats per condition",
+        num_conditions=len(conds),
+        max_plot_conditions=max_plot_conditions,
+    ):
+        return
     nums = [stats[c]["Numerator"] for c in conds]
     dens = [stats[c]["Denominator"] for c in conds]
     ratios = [stats[c]["Numerator/denominator"] for c in conds]
@@ -651,6 +723,7 @@ def plot_grad_sq_sums_by_condition(
     title: str = "Gradient mean square per condition",
     top_k: int = 0,
     log10: bool = True,
+    max_plot_conditions: Optional[int] = 20,
 ) -> None:
     """Plot per-condition gradient mean-square values for BCE vs LE."""
     if bce_sums is None and le_sums is None:
@@ -662,6 +735,12 @@ def plot_grad_sq_sums_by_condition(
         print("[WARN] Grad arrays have different sizes; skipping grad plot.")
         return
     num_conditions = int(bce_vals.size if bce_vals is not None else le_vals.size)
+    if _skip_per_condition_plot(
+        plot_name="gradient mean square by condition",
+        num_conditions=num_conditions,
+        max_plot_conditions=max_plot_conditions,
+    ):
+        return
     cond_ids = np.arange(num_conditions)
     top_k = int(top_k)
     if top_k > 0 and top_k < num_conditions:
@@ -745,11 +824,18 @@ def plot_pred_to_train_rate(
     *,
     condition_label: str,
     eval_name: str,
+    max_plot_conditions: Optional[int] = 20,
     output_path: Optional[Union[str, Path]] = None,
 ) -> None:
     """Plot eval prediction averages vs train base rates."""
     if plot_df is None or len(plot_df) == 0:
         print("[WARN] Plot data unavailable; skipping pred/train ratio chart.")
+        return
+    if _skip_per_condition_plot(
+        plot_name="prediction to train-rate by condition",
+        num_conditions=len(plot_df),
+        max_plot_conditions=max_plot_conditions,
+    ):
         return
     fig, ax = plt.subplots(1, 1, figsize=(12, 4))
     ax.bar(

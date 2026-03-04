@@ -122,6 +122,15 @@ The notebook stays small and delegates everything to the modules in `localized_e
       - `device_conn_type`
       - `C14-C21`: anonymized categorical variables
     - `data/avazu/test.csv` - test data with the same structure.
+- Yambda support targets the Hugging Face dataset `yandex/yambda` subset
+  `flat/50m` file `multi_event.parquet`.
+  - When `data.ctr_dataset="yambda"` and
+    `ctr.datasets.yambda.auto_prepare=true`, the pipeline auto-prepares
+    `data/yambda/train.csv` and `data/yambda/test.csv` from the parquet
+    file (downloading automatically when
+    `ctr.datasets.yambda.download_if_missing=true`).
+  - You can also run `python scripts/prepare_yambda_dataset.py --config configs/default.json`
+    to prepare files ahead of notebook runs.
 - If CSV files remain directly under `data/` (not a subfolder), the CTR loader prints a warning.
 - Synthetic data is generated with log-normal net-worth and age features, plus optional extra numeric features.
 
