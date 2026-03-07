@@ -120,13 +120,13 @@
                 "mode": "top_k",
                 "col": "C14",
                 "ids": [],
-                "k": 50,
+                "k": 6,
                 "metric": "count",
                 "apply_to_test": true,
                 "cache": {
                   "enabled": true,
-                  "train_path": "data/avazu/train_filtered_top50_count.csv",
-                  "test_path": "data/avazu/test_filtered_top50_count.csv",
+                  "train_path": "data/avazu/train_filtered_top6_count.csv",
+                  "test_path": "data/avazu/test_filtered_top6_count.csv",
                   "overwrite": true
                 }
               }
@@ -332,7 +332,7 @@
     "dropout": 0.01
   },
   "data": {
-    "source": "synthetic",
+    "source": "ctr",
     "ctr_dataset": "avazu",
     "train_split": 0.9,
     "standardize": true,
@@ -409,13 +409,13 @@
           "mode": "top_k",
           "col": "C14",
           "ids": [],
-          "k": 50,
+          "k": 6,
           "metric": "count",
           "apply_to_test": true,
           "cache": {
             "enabled": true,
-            "train_path": "data/avazu/train_filtered_top50_count.csv",
-            "test_path": "data/avazu/test_filtered_top50_count.csv",
+            "train_path": "data/avazu/train_filtered_top6_count.csv",
+            "test_path": "data/avazu/test_filtered_top6_count.csv",
             "overwrite": true
           }
         },
@@ -424,6 +424,21 @@
       "criteo": {
         "train_path": "data/criteo/train.csv",
         "test_path": "data/criteo/test.csv",
+        "source_csv_path": null,
+        "auto_prepare": true,
+        "download_if_missing": true,
+        "hf_repo_id": "reczoo/Criteo_x1",
+        "hf_subfolder": "",
+        "hf_train_filename": "train.csv",
+        "hf_test_filename": "test.csv",
+        "hf_valid_filename": "valid.csv",
+        "hf_archive_filename": "Criteo_x1.zip",
+        "use_valid_as_test": true,
+        "criteo_input_label_col": "label",
+        "criteo_test_fraction": 0.1,
+        "criteo_hash_mod": 1000,
+        "criteo_prepare_batch_size_rows": 1000000,
+        "label_col": "click",
         "numeric_cols": [
           "I1",
           "I2",
@@ -468,13 +483,20 @@
           "C26"
         ],
         "condition_col": "C1",
+        "test_has_labels": true,
+        "read_rows": 1000000,
         "filter": {
-          "enabled": false,
-          "mode": "none",
+          "enabled": true,
+          "mode": "top_k",
+          "col": "C1",
+          "ids": [],
+          "k": 20,
+          "metric": "count",
+          "apply_to_test": true,
           "cache": {
-            "enabled": false,
-            "train_path": "data/criteo/train_filtered.csv",
-            "test_path": "data/criteo/test_filtered.csv",
+            "enabled": true,
+            "train_path": "data/criteo/train_filtered_top20.csv",
+            "test_path": "data/criteo/test_filtered_top20.csv",
             "overwrite": false
           }
         }
@@ -532,8 +554,8 @@
   },
   "synthetic": {
     "num_conditions": 4,
-    "min_samples_per_condition": 5000000,
-    "max_samples_per_condition": 5000000,
+    "min_samples_per_condition": 3000000,
+    "max_samples_per_condition": 3000000,
     "test_split": 0.1,
     "numeric_features": [
       "age",
@@ -542,8 +564,9 @@
     ],
     "condition_mode": "uniform",
     "uniform_log10_means": [
-      -2,
-      -3,
+      -2.0,
+      -2.3,
+      -2.6,
       -4
     ],
     "uniform_log10_std": 0.6,
