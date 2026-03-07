@@ -327,6 +327,25 @@ Yambda source preparation (`localized_entropy/data/yambda.py`):
   `track_length_seconds`, `uid`, `is_organic`, `event_type`.
 - Marks `test_has_labels=true` after successful generation.
 
+Criteo source preparation (`localized_entropy/data/criteo.py`):
+- Applies only when `data.source=ctr` and the resolved dataset key is
+  `criteo`.
+- If `auto_prepare=true`, ensures `train_path`/`test_path` exist with
+  this priority:
+  - split a local `source_csv_path` (when provided)
+  - otherwise download split files from Hugging Face
+    (`hf_repo_id`/`hf_subfolder` and
+    `hf_train_filename` + `hf_test_filename`/`hf_valid_filename`)
+  - if split files are unavailable, download/extract
+    `hf_archive_filename` (default `Criteo_x1.zip`) and map train/test
+    members from the archive
+- Normalizes the expected Criteo schema:
+  `label`/`click`, `I1..I13`, `C1..C26`.
+- When splitting a single source CSV, uses deterministic modulo-based
+  row partitioning configured by `criteo_test_fraction` and
+  `criteo_hash_mod`.
+- Marks `test_has_labels=true` after successful generation.
+
 CTR source (`localized_entropy/data/ctr.py`):
 - Resolves active dataset config from `data.ctr_dataset` (or `ctr.dataset`)
   and merges `ctr.defaults` + `ctr.datasets.<active>`.

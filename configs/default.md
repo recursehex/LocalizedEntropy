@@ -248,6 +248,26 @@ These settings are used when `data.source` is `ctr`.
   deterministic hash-split parameters used to create train/test CSVs.
 - `ctr.datasets.yambda.yambda_prepare_batch_size_rows`: Batch size used
   while streaming parquet -> pandas -> CSV conversion.
+- `ctr.datasets.criteo.auto_prepare`: If true, ensure Criteo train/test
+  CSVs exist before loading.
+- `ctr.datasets.criteo.download_if_missing`: If true, download Criteo
+  split files from Hugging Face when missing locally, then fall back to
+  archive extraction when needed.
+- `ctr.datasets.criteo.hf_repo_id` / `hf_subfolder` /
+  `hf_train_filename` / `hf_test_filename` / `hf_valid_filename`:
+  Hugging Face source for Criteo auto-download.
+- `ctr.datasets.criteo.hf_archive_filename`: Optional archive filename
+  (default `Criteo_x1.zip`) used when split files are not available.
+- `ctr.datasets.criteo.use_valid_as_test`: If true, prefer `valid.csv`
+  as the local test file when available.
+- `ctr.datasets.criteo.source_csv_path`: Optional single CSV to split
+  deterministically into `train_path`/`test_path` via pandas.
+- `ctr.datasets.criteo.criteo_test_fraction` / `criteo_hash_mod`:
+  deterministic split controls when splitting `source_csv_path`.
+- `ctr.datasets.criteo.criteo_prepare_batch_size_rows`: Streaming batch
+  size used while normalizing/splitting Criteo CSVs.
+- `ctr.datasets.criteo.criteo_input_label_col`: Label column name in
+  source files (mapped to configured `label_col`).
 - `ctr.datasets.<name>.numeric_cols`: Numeric feature columns.
 - `ctr.datasets.<name>.categorical_cols`: Categorical feature columns.
 - `ctr.datasets.<name>.categorical_max_values`: Cap per categorical vocab

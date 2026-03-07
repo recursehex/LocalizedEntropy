@@ -8,11 +8,20 @@ from localized_entropy.utils import dedupe
 from localized_entropy.data.common import build_condition_encoder, encode_conditions
 
 _WARNED_ROOTS = set()
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_repo_path(path_value: Path | str) -> Path:
+    """Resolve relative dataset paths from the repository root."""
+    path = Path(path_value)
+    if path.is_absolute():
+        return path
+    return _REPO_ROOT / path
 
 
 def warn_if_root_csvs(data_root: Path | str = "data") -> None:
     """Warn when CSV files exist directly under the data root."""
-    root = Path(data_root)
+    root = _resolve_repo_path(data_root)
     try:
         marker = str(root.resolve())
     except Exception:
@@ -426,8 +435,8 @@ def maybe_cache_filtered_ctr(ctr_cfg: Dict) -> None:
     read_rows = _safe_nrows(ctr_cfg.get("read_rows"))
     chunksize = int(cache_cfg.get("chunksize", 1_000_000))
     label_col = ctr_cfg.get("label_col", "click")
-    train_in = Path(ctr_cfg["train_path"])
-    test_in = Path(ctr_cfg["test_path"])
+    train_in = _resolve_repo_path(ctr_cfg["train_path"])
+    test_in = _resolve_repo_path(ctr_cfg["test_path"])
 
     selected_ids: List = []
     if filter_mode == "ids":
@@ -474,8 +483,12 @@ def maybe_cache_filtered_ctr(ctr_cfg: Dict) -> None:
     filter_cfg["col"] = filter_col
     ctr_cfg["filter"] = filter_cfg
 
-    train_out = Path(cache_cfg.get("train_path", str(train_in.parent / "train_filtered.csv")))
-    test_out = Path(cache_cfg.get("test_path", str(test_in.parent / "test_filtered.csv")))
+    train_out = _resolve_repo_path(
+        cache_cfg.get("train_path", str(train_in.parent / "train_filtered.csv"))
+    )
+    test_out = _resolve_repo_path(
+        cache_cfg.get("test_path", str(test_in.parent / "test_filtered.csv"))
+    )
     overwrite = bool(cache_cfg.get("overwrite", False))
 
     if overwrite or not train_out.exists():
@@ -586,11 +599,14 @@ def load_ctr_frames(cfg: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, Optional[pd.
         + ([label_col] if test_has_labels else [])
     )
 
+    train_path = _resolve_repo_path(cfg["train_path"])
+    test_path = _resolve_repo_path(cfg["test_path"])
+
     print("Loading CTR dataset...")
-    train_df = pd.read_csv(cfg["train_path"], usecols=train_usecols, nrows=_safe_nrows(cfg.get("read_rows")))
+    train_df = pd.read_csv(train_path, usecols=train_usecols, nrows=_safe_nrows(cfg.get("read_rows")))
     print("TRAIN DATA HEAD:\n")
     print(train_df.head())
-    test_df = pd.read_csv(cfg["test_path"], usecols=test_usecols, nrows=_safe_nrows(cfg.get("read_rows")))
+    test_df = pd.read_csv(test_path, usecols=test_usecols, nrows=_safe_nrows(cfg.get("read_rows")))
     print(f"Train rows: {len(train_df):,} | Test rows: {len(test_df):,}")
 
     if cfg.get("drop_na", True):

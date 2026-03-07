@@ -131,6 +131,16 @@ The notebook stays small and delegates everything to the modules in `localized_e
     `ctr.datasets.yambda.download_if_missing=true`).
   - You can also run `python scripts/prepare_yambda_dataset.py --config configs/default.json`
     to prepare files ahead of notebook runs.
+- Criteo support also includes built-in Hugging Face loading from
+  `reczoo/Criteo_x1` into `data/criteo/`.
+  - With `data.ctr_dataset="criteo"` and
+    `ctr.datasets.criteo.auto_prepare=true`, the pipeline ensures
+    `data/criteo/train.csv` and `data/criteo/test.csv` exist by:
+    1) using a local source CSV split (if configured), or
+    2) downloading split files (`train.csv` + `test.csv`/`valid.csv`) from HF, or
+    3) downloading and extracting `Criteo_x1.zip` when split files are not present.
+  - Manual prep command:
+    `python scripts/prepare_criteo_dataset.py --config configs/default.json`
 - If CSV files remain directly under `data/` (not a subfolder), the CTR loader prints a warning.
 - Synthetic data is generated with log-normal net-worth and age features, plus optional extra numeric features.
 
