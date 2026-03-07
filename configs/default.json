@@ -120,13 +120,13 @@
                   "mode": "top_k",
                   "col": "C14",
                   "ids": [],
-                  "k": 50,
+                  "k": 6,
                   "metric": "count",
                   "apply_to_test": true,
                   "cache": {
                     "enabled": true,
-                    "train_path": "data/avazu/train_filtered_top50_count.csv",
-                    "test_path": "data/avazu/test_filtered_top50_count.csv",
+                    "train_path": "data/avazu/train_filtered_top6_count.csv",
+                    "test_path": "data/avazu/test_filtered_top6_count.csv",
                     "overwrite": true
                   }
                 }
@@ -198,34 +198,37 @@
           "by_source": {
             "avazu": {
               "epochs": 5,
-              "lr": 0.001,
+              "lr": 0.0064,
+              "lr_decay": 0.9999,
               "lr_category": null,
               "lr_zero_after_epochs": null,
-              "batch_size": 25000,
+              "batch_size": 16384,
               "eval_every_n_batches": 0
             },
             "criteo": {
               "epochs": 5,
-              "lr": 0.001,
+              "lr": 0.0064,
+              "lr_decay": 0.9995,
               "lr_category": null,
               "lr_zero_after_epochs": null,
-              "batch_size": 25000,
+              "batch_size": 16384,
               "eval_every_n_batches": 0
             },
             "yambda": {
-              "epochs": 1,
-              "lr": 0.001,
+              "epochs": 5,
+              "lr": 0.01024,
               "lr_category": null,
               "lr_zero_after_epochs": null,
-              "batch_size": 25000,
+              "batch_size": 16384,
               "eval_every_n_batches": 0
             },
             "synthetic": {
               "epochs": 5,
-              "lr": 0.001,
+              "lr": 0.004,
+              "lr_decay": 0.999,
               "lr_category": null,
               "lr_zero_after_epochs": null,
-              "batch_size": 25000,
+              "batch_size": 32768,
               "eval_every_n_batches": 0
             }
           }
@@ -234,58 +237,54 @@
           "by_source": {
             "avazu": {
               "epochs": 5,
-              "lr": 0.0025,
-              "lr_decay": 0.999,
-              "lr_category_decay": 0.9999,
+              "lr": 0.0005,
+              "lr_decay": 0.9995,
               "lr_category": null,
               "lr_zero_after_epochs": null,
               "batch_size": 25000,
               "eval_every_n_batches": 0,
               "cross_batch": {
                 "enabled": true,
-                "amplification_rate": 50.0
+                "amplification_rate": 64.0
               }
             },
             "criteo": {
               "epochs": 5,
-              "lr": 0.01,
+              "lr": 0.00025,
               "lr_decay": 0.999,
-              "lr_category_decay": 0.9999,
               "lr_category": null,
               "lr_zero_after_epochs": null,
               "batch_size": 25000,
               "eval_every_n_batches": 0,
               "cross_batch": {
                 "enabled": true,
-                "amplification_rate": 50.0
+                "amplification_rate": 4.0
               }
             },
             "yambda": {
-              "epochs": 1,
-              "lr": 0.01,
-              "lr_decay": 0.999,
-              "lr_category_decay": 0.9999,
+              "epochs": 5,
+              "lr": 0.0005,
+              "lr_decay": 0.9995,
               "lr_category": null,
               "lr_zero_after_epochs": null,
-              "batch_size": 25000,
+              "batch_size": 16384,
               "eval_every_n_batches": 0,
               "cross_batch": {
                 "enabled": true,
-                "amplification_rate": 50.0
+                "amplification_rate": 64.0
               }
             },
             "synthetic": {
               "epochs": 5,
-              "lr": 0.003,
-              "lr_decay": 0.999,
-              "lr_category_decay": 0.9999,
+              "lr": 0.004,
+              "lr_decay": 0.9999,
               "lr_category": null,
               "lr_zero_after_epochs": null,
-              "batch_size": 25000,
+              "batch_size": 16384,
               "eval_every_n_batches": 0,
               "cross_batch": {
                 "enabled": true,
-                "amplification_rate": 50.0
+                "amplification_rate": 4.0
               }
             }
           }
@@ -317,7 +316,7 @@
               "eval_every_n_batches": 0
             },
             "synthetic": {
-              "epochs": 3,
+              "epochs": 5,
               "lr": 0.001,
               "lr_category": null,
               "lr_zero_after_epochs": null,
@@ -343,7 +342,7 @@
     },
     "data": {
       "source": "ctr",
-      "ctr_dataset": "yambda",
+      "ctr_dataset": "avazu",
       "train_split": 0.9,
       "standardize": true,
       "standardize_eps": 1e-06,
@@ -416,17 +415,16 @@
           "condition_col": "C14",
           "filter": {
             "enabled": true,
-            "mode": "ids",
+            "mode": "top_k",
             "col": "C14",
-            "ids": [
-              20093,
-              21768,
-              21191
-            ],
+            "ids": [],
+            "k": 6,
+            "metric": "count",
+            "apply_to_test": true,
             "cache": {
               "enabled": true,
-              "train_path": "data/avazu/train_filtered.csv",
-              "test_path": "data/avazu/test_filtered.csv",
+              "train_path": "data/avazu/train_filtered_top6_count.csv",
+              "test_path": "data/avazu/test_filtered_top6_count.csv",
               "overwrite": false
             }
           },
@@ -435,6 +433,21 @@
         "criteo": {
           "train_path": "data/criteo/train.csv",
           "test_path": "data/criteo/test.csv",
+          "source_csv_path": null,
+          "auto_prepare": true,
+          "download_if_missing": true,
+          "hf_repo_id": "reczoo/Criteo_x1",
+          "hf_subfolder": "",
+          "hf_train_filename": "train.csv",
+          "hf_test_filename": "test.csv",
+          "hf_valid_filename": "valid.csv",
+          "hf_archive_filename": "Criteo_x1.zip",
+          "use_valid_as_test": true,
+          "criteo_input_label_col": "label",
+          "criteo_test_fraction": 0.1,
+          "criteo_hash_mod": 1000,
+          "criteo_prepare_batch_size_rows": 1000000,
+          "label_col": "click",
           "numeric_cols": [
             "I1",
             "I2",
@@ -479,13 +492,20 @@
             "C26"
           ],
           "condition_col": "C1",
+          "test_has_labels": true,
+          "read_rows": 1000000,
           "filter": {
-            "enabled": false,
-            "mode": "none",
+            "enabled": true,
+            "mode": "top_k",
+            "col": "C1",
+            "ids": [],
+            "k": 20,
+            "metric": "count",
+            "apply_to_test": true,
             "cache": {
-              "enabled": false,
-              "train_path": "data/criteo/train_filtered.csv",
-              "test_path": "data/criteo/test_filtered.csv",
+              "enabled": true,
+              "train_path": "data/criteo/train_filtered_top20.csv",
+              "test_path": "data/criteo/test_filtered_top20.csv",
               "overwrite": false
             }
           }
