@@ -275,6 +275,7 @@ def train_with_epoch_plots(
     debug_gradients: bool = False,
     debug_le_inputs: bool = False,
     le_cross_batch_cfg: Optional[dict] = None,
+    le_passive_cfg: Optional[dict] = None,
     print_embedding_table: bool = False,
 ) -> Tuple[List[float], List[float], Optional[GradSqStats], List[dict]]:
     """Train a model while optionally collecting plots and diagnostics."""
@@ -335,6 +336,16 @@ def train_with_epoch_plots(
             amp_value = float(amp_factor)
             if amp_value > 0:
                 cross_batch_history = CrossBatchHistory(amp_value)
+    passive_weight = 0.0
+    passive_clip = 1e-4
+    passive_mode = "rce"
+    norm_strength = 1.0
+    if use_le and isinstance(le_passive_cfg, dict):
+        if bool(le_passive_cfg.get("enabled", False)):
+            passive_weight = float(le_passive_cfg.get("weight", 0.0))
+            passive_clip = float(le_passive_cfg.get("clip", 1e-4))
+            passive_mode = str(le_passive_cfg.get("mode", "rce")).lower().strip()
+        norm_strength = float(le_passive_cfg.get("norm_strength", 1.0))
     base_rates_train_t = None
     base_rates_eval_t = None
     if use_le:
@@ -459,6 +470,10 @@ def train_with_epoch_plots(
                     sample_weights=w,
                     debug=debug_le_inputs,
                     cross_batch_history=cross_batch_history,
+                    passive_weight=passive_weight,
+                    passive_clip=passive_clip,
+                    passive_mode=passive_mode,
+                    norm_strength=norm_strength,
                 )
             elif loss_mode == "bce":
                 bce_per = bce_loss(logits, y)

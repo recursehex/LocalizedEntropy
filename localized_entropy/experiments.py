@@ -223,6 +223,7 @@ def train_single_loss(
     debug_gradients: bool = False,
     debug_le_inputs: bool = False,
     le_cross_batch_cfg: Optional[dict] = None,
+    le_passive_cfg: Optional[dict] = None,
     print_embedding_table: bool = False,
 ) -> TrainRunResult:
     """Train one model/loss mode and collect evaluation outputs."""
@@ -271,6 +272,7 @@ def train_single_loss(
         debug_gradients=debug_gradients,
         debug_le_inputs=debug_le_inputs,
         le_cross_batch_cfg=le_cross_batch_cfg,
+        le_passive_cfg=le_passive_cfg,
         print_embedding_table=print_embedding_table,
     )
     eval_loss, eval_preds = evaluate_or_predict(
@@ -399,6 +401,7 @@ def run_repeated_loss_experiments(
                 lr_category = _resolve_lr_category(train_cfg)
                 lr_zero_after_epochs = train_cfg.get("lr_zero_after_epochs")
             le_cross_batch_cfg = None
+            le_passive_cfg = None
             if loss_mode == "localized_entropy" and isinstance(train_cfg, dict):
                 if isinstance(train_cfg.get("cross_batch"), dict):
                     le_cross_batch_cfg = train_cfg.get("cross_batch")
@@ -406,6 +409,8 @@ def run_repeated_loss_experiments(
                     le_cfg = train_cfg.get("localized_entropy")
                     if isinstance(le_cfg, dict):
                         le_cross_batch_cfg = le_cfg.get("cross_batch")
+                if isinstance(train_cfg.get("passive"), dict):
+                    le_passive_cfg = train_cfg.get("passive")
             result = train_single_loss(
                 model=model,
                 loss_mode=loss_mode,
@@ -441,6 +446,7 @@ def run_repeated_loss_experiments(
                 debug_gradients=debug_gradients,
                 debug_le_inputs=debug_le_inputs,
                 le_cross_batch_cfg=le_cross_batch_cfg,
+                le_passive_cfg=le_passive_cfg,
             )
             results[loss_mode].append(result)
     return results

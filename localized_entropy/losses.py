@@ -70,6 +70,34 @@ def binary_cross_entropy(
     return total
 
 
+def reverse_cross_entropy_with_logits(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    clip_value: float = 1e-4,
+) -> torch.Tensor:
+    """Binary Reverse Cross Entropy (RCE) from logits.
+
+    RCE uses model predictions as the distribution and (clipped) true labels as
+    the reference, providing a complementary gradient signal to standard BCE.
+
+    RCE(y, p) = -p * log(y_clip) - (1-p) * log(1-y_clip)
+
+    where y_clip = clamp(y, clip_value, 1 - clip_value) and p = sigmoid(z).
+
+    For y=1: RCE ≈ (1-p) * |log(clip_value)|   (pushes p toward 1)
+    For y=0: RCE ≈   p   * |log(clip_value)|   (pushes p toward 0)
+
+    The gradient magnitude is proportional to p*(1-p), providing self-regulating
+    gradient signal that peaks at p=0.5 and vanishes near 0 or 1.
+    """
+    z = logits.view(-1)
+    y = targets.view(-1).to(z.dtype)
+    p = torch.sigmoid(z)
+    y_clip = y.clamp(clip_value, 1.0 - clip_value)
+    rce = -p * torch.log(y_clip) - (1.0 - p) * torch.log(1.0 - y_clip)
+    return rce
+
+
 def focal_loss_with_logits(
     logits: torch.Tensor,
     targets: torch.Tensor,
@@ -268,6 +296,10 @@ def localized_entropy(
     eps: float = 1e-12,
     debug: bool = False,
     cross_batch_history: Optional[CrossBatchHistory] = None,
+    passive_weight: float = 0.0,
+    passive_clip: float = 1e-4,
+    passive_mode: str = "rce",
+    norm_strength: float = 1.0,
 ) -> torch.Tensor:
     """
     Localized Entropy (LE) implementation using PyTorch.
@@ -321,6 +353,30 @@ def localized_entropy(
                     Optional CrossBatchHistory instance to smooth label counts
                     and numerator CE sums across batches via a moving window
                     per condition.
+    passive_weight:
+                    Weight of the passive Reverse Cross Entropy (RCE) component
+                    added to per-sample BCE before LE normalization. When > 0,
+                    enables Active Passive Loss (APL) integration: the RCE
+                    provides a complementary gradient signal with magnitude
+                    proportional to p*(1-p), which peaks at p=0.5 and vanishes
+                    near 0 or 1.  Default 0.0 disables the passive component.
+    passive_clip:
+                    Clip value for RCE label smoothing.  Labels are clamped to
+                    [clip, 1-clip] before taking log.  Smaller values produce
+                    larger RCE magnitudes.  Default 1e-4.
+    passive_mode:
+                    Type of passive component: 'rce' adds Reverse Cross Entropy
+                    per-sample before LE normalization; 'bce' adds standard BCE
+                    as a global regularizer after LE computation (hybrid loss).
+                    Default 'rce'.
+    norm_strength:
+                    Controls how aggressively per-condition normalization is
+                    applied.  The denominator CE_j(y, p_j) is raised to this
+                    power: class_term = CE_j(y, ŷ) / CE_j(y, p_j)^α.
+                    α=1.0 (default) is standard LE.  α=0.0 reduces to BCE.
+                    Values in (0, 1) provide a smooth interpolation that
+                    preserves some per-condition balancing while keeping BCE's
+                    gradient structure for global metrics.
 
     Returns
     -------
@@ -350,6 +406,14 @@ def localized_entropy(
 
     # Per-sample stable BCE-with-logits for the numerator CE_j(y, yhat).
     bce_per = torch.clamp_min(z, 0) - z * y + torch.log1p(torch.exp(-torch.abs(z)))
+    _passive_mode = str(passive_mode).lower().strip()
+    # Save raw (unweighted) BCE for the hybrid 'bce' passive mode.
+    bce_raw = bce_per
+    # Compute per-sample RCE for later use (added after LE normalization).
+    rce_per = None
+    if passive_weight > 0.0 and _passive_mode == "rce":
+        rce_per = reverse_cross_entropy_with_logits(z, y, clip_value=passive_clip)
+
     sample_w = None
     if sample_weights is not None:
         sample_w = sample_weights.view(-1).to(device=z.device, dtype=z.dtype)
@@ -425,7 +489,11 @@ def localized_entropy(
 
         # Denominator CE_j(y, p_j) for constant predictor at base rate.
         den = ones * (-torch.log(pj)) + zeros * (-torch.log1p(-pj))
-        class_term = num / den.clamp_min(eps)  # Normalize by base-rate CE_j.
+        den_clamped = den.clamp_min(eps)
+        # Partial normalization: den^α interpolates between BCE (α=0) and full LE (α=1).
+        if norm_strength != 1.0:
+            den_clamped = den_clamped.pow(norm_strength)
+        class_term = num / den_clamped  # Normalize by (base-rate CE_j)^α.
 
 
         # experimental adjustments for LE  uncomment line bellow
@@ -468,7 +536,22 @@ def localized_entropy(
 
     denom = total_weight if isinstance(total_weight, torch.Tensor) else torch.tensor(total_weight, dtype=z.dtype, device=z.device)
     loss = total / denom.clamp_min(1.0)  # Final LE: average by total weight.
-    
+
+    # Passive loss: added after LE normalization so it doesn't get divided by
+    # the per-condition denominator CE_j(y, p_j).
+    if passive_weight > 0.0 and _passive_mode == "rce" and rce_per is not None:
+        if sample_w is not None:
+            rce_global = (rce_per * sample_w).sum() / sample_w.sum().clamp_min(1.0)
+        else:
+            rce_global = rce_per.mean()
+        loss = loss + passive_weight * rce_global
+    if passive_weight > 0.0 and _passive_mode == "bce":
+        if sample_w is not None:
+            bce_global = (bce_raw * sample_w).sum() / sample_w.sum().clamp_min(1.0)
+        else:
+            bce_global = bce_raw.mean()
+        loss = loss + passive_weight * bce_global
+
     if debug:
         print(
             "[localized_entropy][debug] "
@@ -479,7 +562,7 @@ def localized_entropy(
             f"total={total.item():.6g} "
             f"loss_before_reduction={loss.item():.6g}"
         )
-    
+
     if reduction == "sum":
         return loss * denom  # Return un-averaged total when requested.
     return loss
