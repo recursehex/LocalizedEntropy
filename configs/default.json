@@ -246,6 +246,13 @@
               "cross_batch": {
                 "enabled": true,
                 "amplification_rate": 64.0
+              },
+              "passive": {
+                "enabled": false,
+                "weight": 0.0,
+                "clip": 1e-4,
+                "mode": "bce",
+                "norm_strength": 1.0
               }
             },
             "criteo": {
@@ -258,7 +265,14 @@
               "eval_every_n_batches": 0,
               "cross_batch": {
                 "enabled": true,
-                "amplification_rate": 4.0
+                "amplification_rate": 64.0
+              },
+              "passive": {
+                "enabled": false,
+                "weight": 0.0,
+                "clip": 1e-4,
+                "mode": "bce",
+                "norm_strength": 1.0
               }
             },
             "yambda": {
@@ -272,19 +286,33 @@
               "cross_batch": {
                 "enabled": true,
                 "amplification_rate": 64.0
+              },
+              "passive": {
+                "enabled": false,
+                "weight": 0.0,
+                "clip": 1e-4,
+                "mode": "bce",
+                "norm_strength": 1.0
               }
             },
             "synthetic": {
               "epochs": 5,
               "lr": 0.004,
-              "lr_decay": 0.9999,
+              "lr_decay": 0.999,
               "lr_category": null,
               "lr_zero_after_epochs": null,
               "batch_size": 16384,
               "eval_every_n_batches": 0,
               "cross_batch": {
                 "enabled": true,
-                "amplification_rate": 4.0
+                "amplification_rate": 64.0
+              },
+              "passive": {
+                "enabled": false,
+                "weight": 0.0,
+                "clip": 1e-4,
+                "mode": "rce",
+                "norm_strength": 1.0
               }
             }
           }
@@ -675,7 +703,7 @@
     },
     "repeats": {
       "enabled": true,
-      "num_runs": 10,
+      "num_runs": 15,
       "seed_stride": 1,
       "include_base_run": true,
       "wilcoxon_zero_method": "wilcox",
