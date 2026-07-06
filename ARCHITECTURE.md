@@ -61,8 +61,8 @@ Step-by-step pipeline:
 3) Data preparation
 - `localized_entropy/data/pipeline.py` drives the data pipeline.
 - It branches on `data.source`:
-  - CTR: runs optional Yambda auto-preparation first
-    (`localized_entropy/data/yambda.py`), then
+  - CTR: runs optional per-dataset auto-preparation first
+    (`localized_entropy/data/{avazu,criteo,yambda}.py`), then
     `localized_entropy/data/ctr.py` loads CSVs, adds derived
     features (time, device counters), encodes conditions/categoricals,
     and builds numeric/categorical arrays.
@@ -346,6 +346,29 @@ Criteo source preparation (`localized_entropy/data/criteo.py`):
   `criteo_hash_mod`.
 - Marks `test_has_labels=true` after successful generation.
 
+Avazu source preparation (`localized_entropy/data/avazu.py`):
+- Applies only when `data.source=ctr` and the resolved dataset key is
+  `avazu`.
+- If `auto_prepare=true` and `train_path`/`test_path` are missing, ensures
+  them by:
+  - splitting a local `source_csv_path` (a labeled `train.csv`/`train.gz`)
+    when provided, or
+  - downloading the Kaggle competition
+    (`kaggle_competition`, default `avazu-ctr-prediction`) via `kagglehub`
+    when `download_if_missing=true`, then locating the labeled `train`
+    member in the download.
+- The Kaggle competition `test` file is unlabeled, so preparation splits
+  the labeled `train` file into train/test CSVs (rather than using the
+  competition test set) to produce a per-condition-evaluable labeled test
+  set. Splitting uses deterministic modulo-based row partitioning
+  configured by `avazu_test_fraction` and `avazu_hash_mod`, streaming in
+  `avazu_prepare_batch_size_rows` chunks and preserving all source columns.
+- Requires Kaggle credentials (`~/.kaggle/kaggle.json` or
+  `KAGGLE_USERNAME`/`KAGGLE_KEY`) plus one-time acceptance of the
+  competition rules; a missing/invalid credential raises an actionable
+  error.
+- Marks `test_has_labels=true` after successful generation.
+
 CTR source (`localized_entropy/data/ctr.py`):
 - Resolves active dataset config from `data.ctr_dataset` (or `ctr.dataset`)
   and merges `ctr.defaults` + `ctr.datasets.<active>`.
@@ -458,5 +481,6 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
 - `localized_entropy/compare.py`: builds per-condition BCE-vs-LE comparison
   tables (calibration + LE ratio deltas) and repeated-run summaries, invoked
   by the notebook during post-training evaluation.
-- `scripts/prepare_yambda_dataset.py` / `scripts/prepare_criteo_dataset.py`:
-  standalone dataset preparation entry points.
+- `scripts/prepare_avazu_dataset.py` / `scripts/prepare_criteo_dataset.py` /
+  `scripts/prepare_yambda_dataset.py`: standalone dataset preparation entry
+  points.

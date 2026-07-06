@@ -415,6 +415,15 @@
         "avazu": {
           "train_path": "data/avazu/train.csv",
           "test_path": "data/avazu/test.csv",
+          "auto_prepare": true,
+          "download_if_missing": true,
+          "kaggle_competition": "avazu-ctr-prediction",
+          "source_csv_path": null,
+          "label_col": "click",
+          "avazu_test_fraction": 0.1,
+          "avazu_hash_mod": 1000,
+          "avazu_prepare_batch_size_rows": 1000000,
+          "test_has_labels": true,
           "numeric_cols": [],
           "categorical_cols": [
             "C1",

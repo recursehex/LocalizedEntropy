@@ -21,8 +21,9 @@ pytest localized_entropy/tests/test_losses.py            # single file
 pytest localized_entropy/tests/test_losses.py::test_name # single test
 
 # Prepare real datasets ahead of notebook runs (also auto-prepared on demand):
-python scripts/prepare_yambda_dataset.py --config configs/default.json
-python scripts/prepare_criteo_dataset.py --config configs/default.json
+python scripts/prepare_avazu_dataset.py  --config configs/default.json   # Kaggle (kagglehub) — needs ~/.kaggle/kaggle.json + rules accepted
+python scripts/prepare_criteo_dataset.py --config configs/default.json   # Hugging Face
+python scripts/prepare_yambda_dataset.py --config configs/default.json   # Hugging Face
 ```
 
 There is no build step, linter config, or packaging (`setup.py`/`pyproject.toml`). `conftest.py` inserts the repo root on `sys.path`, so tests import `localized_entropy` without installation. The notebook `localized_entropy.ipynb` is the primary run surface — it delegates everything to the modules and is meant to stay thin.
@@ -49,6 +50,6 @@ The notebook is orchestration only; all logic lives in `localized_entropy/`:
 
 - **Numerical dtype**: when MPS is disabled the notebook uses float64 on CPU; float64 is unsupported on MPS, so gradient-accumulation diagnostics fall back to float32 there. Keep dtype-aware epsilons (see `focal_loss_with_logits`) when touching loss numerics.
 - **Deprecated paths**: synthetic reweighting (`synthetic.reweighting`) and per-sample weights are DEPRECATED and emit warnings; unit weights are mathematically equivalent to the unweighted formulation. Don't build new features on them.
-- **Datasets are not distributed** — they live under `data/<dataset>/` (gitignored). Avazu is manual (`gunzip -c NAME.gz > NAME.csv`); Yambda/Criteo auto-download from Hugging Face when enabled. For Avazu, `C14` is the ad-id condition.
+- **Datasets are not distributed** — they live under `data/<dataset>/` (gitignored). Each has an auto-prepare path (guarded by `auto_prepare`/`download_if_missing`): Criteo/Yambda download from Hugging Face; Avazu downloads the Kaggle competition via `kagglehub` (needs `~/.kaggle/kaggle.json` + accepted rules) and splits the labeled `train` file into train/test. Avazu can also be prepared manually (`gunzip -c NAME.gz > NAME.csv`). For Avazu, `C14` is the ad-id condition.
 - Reproducibility relies on fixed NumPy/PyTorch seeds set in the notebook and deterministic hash splits in data prep; keep RNG usage deterministic.
 - `README.md` still references a `contract.md` that no longer exists — trust the actual tree over such mentions.

@@ -102,8 +102,26 @@ The notebook stays small and delegates everything to the modules in `localized_e
   - `data/yambda/`
 - The active CTR dataset is selected by `data.ctr_dataset` in `configs/default.json`.
 - Real data currently defaults to Avazu CTR data. The repo does not distribute datasets.
-  - The Avazu dataset comes as `.gz` files, convert them to `.csv` with `gunzip -c NAME.gz > NAME.csv`
-  - It should be structured like this:
+  - Avazu can be auto-prepared from the Kaggle competition via `kagglehub`.
+    With `data.ctr_dataset="avazu"`, `ctr.datasets.avazu.auto_prepare=true`,
+    and `ctr.datasets.avazu.download_if_missing=true`, the pipeline downloads
+    `ctr.datasets.avazu.kaggle_competition` (default `avazu-ctr-prediction`)
+    and deterministically splits the labeled `train` file into
+    `data/avazu/train.csv` and `data/avazu/test.csv` (the competition `test`
+    file is unlabeled, so the labeled split provides a per-condition-evaluable
+    test set with labels). Split ratio is controlled by
+    `avazu_test_fraction` / `avazu_hash_mod`.
+    - Requires Kaggle credentials: place `~/.kaggle/kaggle.json`
+      (`{"username": ..., "key": ...}`) or set `KAGGLE_USERNAME`/`KAGGLE_KEY`,
+      and accept the competition rules once at
+      https://www.kaggle.com/competitions/avazu-ctr-prediction/rules.
+    - Manual prep command:
+      `python scripts/prepare_avazu_dataset.py --config configs/default.json`
+    - To use a pre-downloaded labeled file instead of Kaggle, set
+      `ctr.datasets.avazu.source_csv_path` to a local `train.csv`/`train.gz`.
+  - Alternatively, prepare files by hand: the Avazu dataset comes as `.gz`
+    files, convert them to `.csv` with `gunzip -c NAME.gz > NAME.csv`.
+  - Either way, files should be structured like this:
     - `data/avazu/train.csv` - training data with the following fields:
       - `id`: ad identifier
       - `click`: 0/1 for non-click/click

@@ -14,6 +14,7 @@ from localized_entropy.data.ctr import (
     maybe_cache_filtered_ctr,
     warn_if_root_csvs,
 )
+from localized_entropy.data.avazu import maybe_prepare_avazu_dataset
 from localized_entropy.data.criteo import maybe_prepare_criteo_dataset
 from localized_entropy.data.yambda import maybe_prepare_yambda_dataset
 from localized_entropy.data.datasets import ConditionDataset, TensorBatchLoader
@@ -300,6 +301,7 @@ def prepare_data(cfg: Dict, device: torch.device, use_cuda: bool, use_mps: bool 
     balance_by_condition = False
     if source == "ctr":
         ctr_cfg = resolve_ctr_config(cfg)
+        maybe_prepare_avazu_dataset(ctr_cfg)
         maybe_prepare_criteo_dataset(ctr_cfg)
         maybe_prepare_yambda_dataset(ctr_cfg)
         if bool(ctr_cfg.get("warn_root_csv", True)):
