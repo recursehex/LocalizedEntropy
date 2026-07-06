@@ -19,7 +19,8 @@ This repository implements and evaluates Localized Entropy (LE), a normalized cr
   - `training.py` (train/eval loops)
   - `analysis.py` (summaries + LE stats)
   - `plotting.py` (all charts/plots)
-- `contract.md` - Capstone contract and evaluation criteria.
+- `ARCHITECTURE.md` - End-to-end pipeline and per-module architecture reference.
+- `invention.md` - Localized Entropy concept and rationale.
 
 ## Requirements
 Python 3.10+ with:

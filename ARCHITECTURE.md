@@ -455,5 +455,8 @@ Synthetic source (`localized_entropy/data/synthetic.py`):
   search notebooks.
 - `configs/default.json`: experiment configuration.
 - `localized_entropy/`: reusable pipeline, model, training, and analysis.
-- `ad_id_compare_bce_le.py`: trains BCE/LE models and writes per-condition
-  comparison tables (calibration + LE ratio deltas) to `results/`.
+- `localized_entropy/compare.py`: builds per-condition BCE-vs-LE comparison
+  tables (calibration + LE ratio deltas) and repeated-run summaries, invoked
+  by the notebook during post-training evaluation.
+- `scripts/prepare_yambda_dataset.py` / `scripts/prepare_criteo_dataset.py`:
+  standalone dataset preparation entry points.
